@@ -440,25 +440,35 @@ def build_speaker(config, strict: bool = False, notify=None) -> Speaker:
     language = voice.language
     rate = voice.speech_rate
 
-    def elevenlabs():
-        from jarvis.voice.elevenlabs import ElevenLabsSpeaker
+    def build(engine: str, chosen_voice: str) -> Speaker:
+        """Build one engine with the voice id meant for *that* engine.
 
-        return ElevenLabsSpeaker(
-            api_key=voice.elevenlabs_key,
-            voice=voice.tts_voice,
-            model=voice.elevenlabs_model,
-            rate=rate,
-            resolve_voice=False,
-        )
+        `tts_voice` is engine-specific: an ElevenLabs id means nothing to edge
+        and vice versa. An understudy is therefore built with no voice at all,
+        so it uses its own language default.
+        """
+        if engine == "elevenlabs":
+            from jarvis.voice.elevenlabs import ElevenLabsSpeaker
 
-    builders = {
-        "elevenlabs": elevenlabs,
-        "piper": lambda: PiperSpeaker(voice.piper_binary, voice.piper_model, language, rate),
-        "edge": lambda: EdgeSpeaker(voice.tts_voice, language, rate),
-        "say": lambda: _macos_speaker(language, rate),
-        "espeak": lambda: _espeak_speaker(language, rate),
-        "none": NullSpeaker,
-    }
+            return ElevenLabsSpeaker(
+                api_key=voice.elevenlabs_key,
+                voice=chosen_voice,
+                model=voice.elevenlabs_model,
+                rate=rate,
+                resolve_voice=False,
+            )
+        if engine == "piper":
+            model = voice.piper_model or (chosen_voice if chosen_voice.endswith(".onnx") else "")
+            return PiperSpeaker(voice.piper_binary, model, language, rate)
+        if engine == "edge":
+            return EdgeSpeaker(chosen_voice, language, rate)
+        if engine == "say":
+            return _macos_speaker(language, rate)
+        if engine == "espeak":
+            return _espeak_speaker(language, rate)
+        if engine == "none":
+            return NullSpeaker()
+        raise AudioUnavailable(f"Unknown speech engine: {engine!r}")
 
     free_engines = ["piper", "edge", "say", "espeak"]
     # ElevenLabs first when a key is present: it is the reason someone set one.
@@ -468,25 +478,25 @@ def build_speaker(config, strict: bool = False, notify=None) -> Speaker:
         automatic.insert(0, "elevenlabs")
     order = automatic if wanted == "auto" else [wanted]
 
-    def first_working(candidates: list[str]) -> tuple[Speaker | None, Exception | None]:
+    def first_working(
+        candidates: list[str], chosen_voice: str = ""
+    ) -> tuple[Speaker | None, Exception | None]:
         failure: Exception | None = None
         for key in candidates:
-            builder = builders.get(key)
-            if builder is None:
-                failure = AudioUnavailable(f"Unknown speech engine: {key!r}")
-                continue
             try:
-                return builder(), None
+                return build(key, chosen_voice), None
             except Exception as exc:
                 failure = exc
         return None, failure
 
-    speaker, last = first_working(order)
+    speaker, last = first_working(order, voice.tts_voice)
 
     # A metered voice gets a free understudy, so an exhausted quota means a
     # plainer voice rather than a mute assistant.
     if speaker is not None and speaker.name == "elevenlabs" and voice.tts_fallback:
-        backup, _ = first_working(free_engines)
+        # No voice id for the understudy: the configured one belongs to
+        # ElevenLabs and would be rejected by whatever steps in.
+        backup, _ = first_working(free_engines, "")
         if backup is not None:
             from jarvis.voice.elevenlabs import quota_reset_at
             from jarvis.voice.fallback import FallbackSpeaker

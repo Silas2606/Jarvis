@@ -158,6 +158,49 @@ def first_voice_id(api_key: str = "") -> str:
     return voices[0][0]
 
 
+def resolve_voice(wanted: str, api_key: str = "") -> str:
+    """Turn whatever the user wrote into a voice id.
+
+    People reach for the name they read in the listing -- "Roger" -- not the
+    opaque id beside it. Both work, and so does a unique prefix.
+    """
+    wanted = (wanted or "").strip()
+    voices = list_voices(api_key)
+    if not voices:
+        raise ElevenLabsError(
+            "The ElevenLabs account has no voices. Add one in the Voice Library first."
+        )
+    if not wanted:
+        return voices[0][0]
+
+    for voice_id, _name, _labels in voices:
+        if voice_id == wanted:
+            return voice_id
+
+    folded = wanted.casefold()
+    for voice_id, name, _labels in voices:
+        if name.casefold() == folded:
+            return voice_id
+
+    partial = [(vid, name) for vid, name, _ in voices if name.casefold().startswith(folded)]
+    if len(partial) == 1:
+        return partial[0][0]
+    if len(partial) > 1:
+        names = ", ".join(name for _vid, name in partial[:6])
+        raise ElevenLabsError(f"{wanted!r} matches several voices: {names}. Be more specific.")
+
+    available = ", ".join(name for _vid, name, _ in voices[:8])
+    raise ElevenLabsError(
+        f"No ElevenLabs voice called {wanted!r}. Available: {available}… "
+        "Run `jarvis voices` for the full list."
+    )
+
+
+def _resolve(wanted: str, api_key: str) -> str:
+    """Module-level shim so the speaker can resolve lazily."""
+    return resolve_voice(wanted, api_key)
+
+
 class ElevenLabsSpeaker(Speaker):
     """Streams synthesis from ElevenLabs and plays it as it arrives."""
 
@@ -175,9 +218,10 @@ class ElevenLabsSpeaker(Speaker):
         self.api_key = _api_key(api_key)
         self.model = model or DEFAULT_MODEL
         self.rate = rate
-        # Resolving costs one request at start-up, which beats failing on the
-        # first spoken sentence with a guessed id.
-        self.voice = voice or (first_voice_id(self.api_key) if resolve_voice else "")
+        # What the user wrote -- a name, an id, or nothing -- turned into an id
+        # on first use. Resolving here would cost a request at start-up.
+        self.wanted = (voice or "").strip()
+        self.voice = _resolve(self.wanted, self.api_key) if resolve_voice else ""
         # Set once the account turns out not to allow raw PCM.
         self._use_mp3 = False
         self._lock = threading.Lock()
@@ -188,16 +232,11 @@ class ElevenLabsSpeaker(Speaker):
 
     def check(self) -> str:
         """Verify the key and voice against the service. Returns the voice name."""
-        voices = list_voices(self.api_key)
-        if not self.voice:
-            self.voice = voices[0][0] if voices else ""
-        for voice_id, name, _labels in voices:
+        self.voice = _resolve(self.wanted or self.voice, self.api_key)
+        for voice_id, name, _labels in list_voices(self.api_key):
             if voice_id == self.voice:
                 return name
-        raise ElevenLabsError(
-            f"The voice id {self.voice!r} is not on this account. "
-            "Run `jarvis voices` to see yours."
-        )
+        return self.voice
 
     def _settings(self) -> dict:
         settings: dict[str, float | bool] = {
@@ -225,7 +264,7 @@ class ElevenLabsSpeaker(Speaker):
 
     def _speak(self, text: str) -> None:
         if not self.voice:
-            self.voice = first_voice_id(self.api_key)
+            self.voice = _resolve(self.wanted, self.api_key)
 
         with self._lock:
             use_mp3 = self._use_mp3

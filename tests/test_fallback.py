@@ -241,3 +241,57 @@ def test_the_console_shows_which_voice_is_active_and_when_it_returns(pair, tmp_p
     assert "elevenlabs paused" in described
     assert "retry in" in described
     assert speaker.name == "edge"
+
+
+# -- engine-specific voice ids -----------------------------------------------
+
+
+def test_the_understudy_does_not_inherit_the_primarys_voice_id(monkeypatch, tmp_path):
+    """Regression: edge was handed an ElevenLabs voice id.
+
+    `tts_voice` is engine-specific. Passing the configured ElevenLabs id to
+    whichever free engine stepped in produced "edge-tts failed: Invalid voice
+    'CwhRBWXzGAHq8TQ4Fs17'" -- a message naming the wrong engine and the wrong
+    problem.
+    """
+    from jarvis.config import Config
+    from jarvis.voice.tts import build_speaker
+
+    built: list[tuple[str, str]] = []
+
+    class Recorder(Speaker):
+        def __init__(self, engine: str, voice: str):
+            super().__init__()
+            self._engine = engine
+            self._voice = voice
+            built.append((engine, voice))
+
+        @property
+        def name(self) -> str:
+            return self._engine
+
+        @property
+        def voice_name(self) -> str:
+            return self._voice
+
+        def _speak(self, text: str) -> None:
+            pass
+
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "a-key")
+    monkeypatch.setattr(
+        "jarvis.voice.elevenlabs.ElevenLabsSpeaker",
+        lambda **kw: Recorder("elevenlabs", kw.get("voice", "")),
+    )
+    monkeypatch.setattr(
+        "jarvis.voice.tts.EdgeSpeaker",
+        lambda voice, language, rate: Recorder("edge", voice),
+    )
+
+    config = Config(home=tmp_path)
+    config.voice.tts_voice = "CwhRBWXzGAHq8TQ4Fs17"  # an ElevenLabs id
+    speaker = build_speaker(config)
+
+    assert ("elevenlabs", "CwhRBWXzGAHq8TQ4Fs17") in built
+    # The understudy gets no voice id at all, so it uses its own default.
+    assert ("edge", "") in built
+    assert isinstance(speaker, FallbackSpeaker)

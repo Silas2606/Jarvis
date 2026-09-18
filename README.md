@@ -97,14 +97,21 @@ jarvis voices                       # zeigt die Stimmen deines Kontos
 jarvis say "Guten Abend, Sir."
 ```
 
-Eine bestimmte Stimme festlegen — `tts_voice` ist hier die Voice-ID aus
-`jarvis voices`:
+Eine Stimme festlegen — **Name oder ID, beides geht**, ein eindeutiger
+Namensanfang reicht auch:
 
 ```toml
 [voice]
 tts_engine = "elevenlabs"
-tts_voice = "21m00Tcm4TlvDq8ikWAM"
+tts_voice = "Roger"                      # oder "CwhRBWXzGAHq8TQ4Fs17"
 elevenlabs_model = "eleven_flash_v2_5"   # schnellstes; eleven_multilingual_v2 klingt besser
+```
+
+Zum Ausprobieren ohne die Datei anzufassen:
+
+```powershell
+$env:JARVIS_VOICE_TTS_VOICE = "Roger"
+jarvis say "Guten Abend, Sir."
 ```
 
 Jarvis fordert das Audio als rohes PCM an und spielt es ab, während es noch
@@ -321,7 +328,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-109 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+116 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.

@@ -173,6 +173,10 @@ def _coerce(value: Any, target: Any) -> Any:
         return tuple(value)
     if target is Path:
         return Path(str(value)).expanduser()
+    if isinstance(value, str):
+        # Stray spaces around a pasted key or voice id are never intended and
+        # produce baffling "not found" errors.
+        return value.strip()
     return value
 
 

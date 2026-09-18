@@ -183,3 +183,63 @@ def test_speech_rate_is_clamped_to_what_the_api_accepts(monkeypatch):
     normal = ElevenLabsSpeaker(rate=1.0, resolve_voice=False)
     # An unchanged rate is left out entirely rather than sent as 1.0.
     assert "speed" not in normal._settings()
+
+
+# -- naming a voice ----------------------------------------------------------
+
+
+@pytest.fixture
+def catalogue(monkeypatch):
+    """The listing as `jarvis voices` prints it."""
+    voices = [
+        ("CwhRBWXzGAHq8TQ4Fs17", "Roger", "classy, american, male"),
+        ("JBFqnCBsd6RMkjVDRZzb", "George", "mature, british, male"),
+        ("onwK4e9ZLuTAKqWW03F9", "Daniel", "formal, british, male"),
+        ("GoXyzBapJk3AoCJoMQl9", "Lennart", "young, male, de"),
+    ]
+    monkeypatch.setattr("jarvis.voice.elevenlabs.list_voices", lambda *a, **k: voices)
+    return voices
+
+
+def test_a_voice_can_be_named_instead_of_identified(catalogue):
+    """People reach for the name they read, not the opaque id beside it."""
+    from jarvis.voice.elevenlabs import resolve_voice
+
+    assert resolve_voice("Roger", "k") == "CwhRBWXzGAHq8TQ4Fs17"
+    assert resolve_voice("roger", "k") == "CwhRBWXzGAHq8TQ4Fs17"
+    assert resolve_voice("LENNART", "k") == "GoXyzBapJk3AoCJoMQl9"
+
+
+def test_the_id_still_works(catalogue):
+    from jarvis.voice.elevenlabs import resolve_voice
+
+    assert resolve_voice("JBFqnCBsd6RMkjVDRZzb", "k") == "JBFqnCBsd6RMkjVDRZzb"
+
+
+def test_surrounding_spaces_are_forgiven(catalogue):
+    """A pasted id often carries spaces; that should not be a mystery failure."""
+    from jarvis.voice.elevenlabs import resolve_voice
+
+    assert resolve_voice("  CwhRBWXzGAHq8TQ4Fs17  ", "k") == "CwhRBWXzGAHq8TQ4Fs17"
+    assert resolve_voice(" Roger ", "k") == "CwhRBWXzGAHq8TQ4Fs17"
+
+
+def test_a_unique_prefix_is_enough(catalogue):
+    from jarvis.voice.elevenlabs import resolve_voice
+
+    assert resolve_voice("Geo", "k") == "JBFqnCBsd6RMkjVDRZzb"
+
+
+def test_an_unknown_name_lists_what_there_is(catalogue):
+    from jarvis.voice.elevenlabs import ElevenLabsError, resolve_voice
+
+    with pytest.raises(ElevenLabsError) as caught:
+        resolve_voice("Jarvis", "k")
+    message = str(caught.value)
+    assert "Roger" in message and "jarvis voices" in message
+
+
+def test_nothing_configured_takes_the_first_voice(catalogue):
+    from jarvis.voice.elevenlabs import resolve_voice
+
+    assert resolve_voice("", "k") == "CwhRBWXzGAHq8TQ4Fs17"

@@ -250,8 +250,11 @@ def command_voices(config: Config) -> int:
     for voice in voices:
         marker = " ← in use" if current and voice.split()[0] == current else ""
         print(f"    {voice}{marker}")
-    print("\n  Try one with:  jarvis say \"Guten Abend, Sir.\"")
-    print("  after setting:  $env:JARVIS_VOICE_TTS_VOICE = \"<name>\"")
+    print("\n  Pick one by name or by id:")
+    print('    $env:JARVIS_VOICE_TTS_VOICE = "Roger"        # Windows')
+    print('    export JARVIS_VOICE_TTS_VOICE="Roger"        # macOS/Linux')
+    print('  then:  jarvis say "Guten Abend, Sir."')
+    print("\n  To keep it, put it in ~/.jarvis/config.toml under [voice] as tts_voice.")
     return 0
 
 
