@@ -240,7 +240,7 @@ wake_words = ["jarvis", "hey jarvis"]
 followup_window = 12.0    # seconds you may keep talking without the wake word
 barge_in = true           # interrupt Jarvis by speaking over him
 stt_engine = "auto"       # auto | faster-whisper | whisper-cpp
-stt_model = "small"
+stt_model = "base"
 tts_engine = "auto"       # auto | piper | edge | say | espeak | none
 tts_voice = ""            # engine-specific voice id
 
