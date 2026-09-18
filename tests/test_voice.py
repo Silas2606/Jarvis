@@ -218,3 +218,23 @@ def test_speech_failures_are_reported_rather_than_swallowed():
 
     assert len(reported) == 1
     assert "the voice service said no" in str(reported[0])
+
+
+def test_the_active_voice_is_visible_not_just_the_engine():
+    """A changed voice setting that never took effect must be recognisable.
+
+    Showing only "edge" makes a stale setting indistinguishable from a working
+    one, which is exactly the confusion this avoids.
+    """
+    from jarvis.voice.tts import CommandSpeaker, EdgeSpeaker
+
+    edge = EdgeSpeaker.__new__(EdgeSpeaker)
+    Speaker.__init__(edge)
+    edge.voice = "de-DE-FlorianMultilingualNeural"
+    assert edge.describe() == "edge (de-DE-FlorianMultilingualNeural)"
+
+    say = CommandSpeaker("say", ["say", "-v", "Daniel"])
+    assert say.describe() == "say (Daniel)"
+
+    bare = CommandSpeaker("espeak", ["espeak-ng"])
+    assert bare.describe() == "espeak"

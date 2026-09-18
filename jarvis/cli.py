@@ -102,10 +102,15 @@ def command_doctor(config: Config) -> int:
     )
 
     voices = tts.available_engines()
+    selected = tts.build_speaker(config)
+    detail = selected.describe() if selected.name != "none" else "none"
+    if voices and selected.name != "none" and len(voices) > 1:
+        others = [v for v in voices if v != selected.name]
+        detail += f"  [also available: {', '.join(others)}]"
     check(
         "speech synthesis",
         bool(voices),
-        ", ".join(voices) if voices else "none",
+        detail,
         'install piper, or pip install "jarvis-assistant[edge]" plus ffmpeg',
     )
 
@@ -171,7 +176,7 @@ def command_say(config: Config, text: str) -> int:
 
     try:
         speaker = build_speaker(config, strict=True)
-        print(f"  voice: {speaker.name}")
+        print(f"  voice: {speaker.describe()}")
         # Speaking is inside the try as well: a refused voice name fails here,
         # not while the speaker is being built.
         speaker.say(text)

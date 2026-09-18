@@ -131,7 +131,7 @@ def run_voice(session: Session, greet: bool = True) -> int:
     if session.console is not None:
         session.console.banner(
             model=config.brain.model,
-            voice=speaker.name,
+            voice=speaker.describe(),
             ears=transcriber.name,
             tools=len(session.brain.registry),
         )

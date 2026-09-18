@@ -60,6 +60,16 @@ class Speaker:
         self._speaking = threading.Event()
 
     @property
+    def voice_name(self) -> str:
+        """The specific voice in use, for display and diagnosis."""
+        return ""
+
+    def describe(self) -> str:
+        """Engine and voice together, e.g. "edge (de-DE-FlorianMultilingualNeural)"."""
+        voice = self.voice_name
+        return f"{self.name} ({voice})" if voice else self.name
+
+    @property
     def is_speaking(self) -> bool:
         return self._speaking.is_set()
 
@@ -166,12 +176,17 @@ class PiperSpeaker(Speaker):
         self.language = language
         self.rate = rate
         self.model = model or self._find_model(language)
+
         if not self.model:
             raise AudioUnavailable(
                 "No piper voice model was found. Download one (e.g. "
                 f"{PIPER_VOICES.get(language[:2], 'en_GB-alan-medium')}.onnx) and set "
                 "voice.piper_model in the config."
             )
+
+    @property
+    def voice_name(self) -> str:
+        return Path(self.model).stem if self.model else ""
 
     @staticmethod
     def _find_model(language: str) -> str:
@@ -249,6 +264,10 @@ class EdgeSpeaker(Speaker):
         self.voice = voice or EDGE_VOICES.get(language[:2], EDGE_VOICES["en"])
         self.rate = rate
 
+    @property
+    def voice_name(self) -> str:
+        return self.voice
+
     def _speak(self, text: str) -> None:
         import asyncio
 
@@ -282,6 +301,13 @@ class CommandSpeaker(Speaker):
         super().__init__()
         self.name = name
         self.command = command
+
+    @property
+    def voice_name(self) -> str:
+        # The voice follows a -v flag, for both `say` and espeak.
+        if "-v" in self.command:
+            return self.command[self.command.index("-v") + 1]
+        return ""
 
     def _speak(self, text: str) -> None:
         process = subprocess.Popen(
