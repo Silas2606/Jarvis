@@ -328,7 +328,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-116 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+120 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -365,6 +365,7 @@ jarvis/
 | Stimme abgelehnt | `jarvis voices` — der Name muss exakt stimmen |
 | Stimme klingt steif | Eine andere aus `jarvis voices` probieren; die Multilingual-Stimmen klingen am natürlichsten |
 | Plötzlich andere Stimme | ElevenLabs-Guthaben leer — `jarvis doctor` sagt, bis wann pausiert wird |
+| „elevenlabs paused" trotz Guthaben | Falscher Schlüssel oder falsche Stimme. Nach 15 Minuten wird erneut probiert; sofort geht es mit `rm ~/.jarvis/tts_state.json` |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
 | Antwortet träge | `jarvis doctor` — sagt *voice activity: energy fallback*? Dann `pip install webrtcvad-wheels` (Windows) |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |

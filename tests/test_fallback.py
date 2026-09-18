@@ -13,7 +13,12 @@ import time
 import pytest
 
 from jarvis.voice import AudioUnavailable
-from jarvis.voice.fallback import DEFAULT_BENCH_SECONDS, BenchState, FallbackSpeaker
+from jarvis.voice.fallback import (
+    CONFIG_ERROR_BENCH_SECONDS,
+    DEFAULT_BENCH_SECONDS,
+    BenchState,
+    FallbackSpeaker,
+)
 from jarvis.voice.tts import Speaker
 
 
@@ -170,16 +175,46 @@ def test_an_unusable_reset_time_falls_back_to_a_fixed_interval(pair, tmp_path, r
     assert speaker.bench.until == pytest.approx(time.time() + DEFAULT_BENCH_SECONDS, abs=5)
 
 
-def test_a_rejected_key_is_retried_sooner_than_a_dead_quota(pair, tmp_path):
-    """A wrong key can be fixed any minute; a quota cannot."""
-    primary, backup = pair
-    primary.failure = AudioUnavailable("The ElevenLabs API key was rejected.")
-    speaker = FallbackSpeaker(primary, backup, tmp_path / "state.json")
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "The ElevenLabs API key was rejected. Check ELEVENLABS_API_KEY.",
+        "That ElevenLabs voice does not exist. Run `jarvis voices` to see yours.",
+        "No ElevenLabs voice called 'Roger'. Available: George, Daniel…",
+    ],
+)
+def test_a_settings_mistake_is_retried_in_minutes_not_next_month(pair, tmp_path, failure):
+    """Regression: a mistyped voice benched the paid voice for 30 days.
 
-    speaker.say("Falscher Schlüssel.")
+    An unknown voice was read as a service error, so the code asked when the
+    quota resets and waited until then -- "retry in 731 h" for a typo that the
+    user could fix in seconds. Only a spent quota is worth waiting out.
+    """
+    primary, backup = pair
+    primary.failure = AudioUnavailable(failure)
+    # A quota reset a month away: must be ignored for a settings mistake.
+    month = time.time() + 30 * 24 * 3600
+    speaker = FallbackSpeaker(primary, backup, tmp_path / "state.json", reset_lookup=lambda: month)
+
+    speaker.say("Falsch eingestellt.")
 
     assert speaker.bench.active is True
+    assert speaker.bench.remaining <= CONFIG_ERROR_BENCH_SECONDS
     assert speaker.bench.remaining < DEFAULT_BENCH_SECONDS
+    # The sentence is still spoken, by the understudy.
+    assert backup.spoken == ["Falsch eingestellt."]
+
+
+def test_a_spent_quota_still_waits_for_the_reset(pair, tmp_path):
+    """The long wait is right in exactly one case."""
+    primary, backup = pair
+    primary.failure = quota_error()
+    month = time.time() + 30 * 24 * 3600
+    speaker = FallbackSpeaker(primary, backup, tmp_path / "state.json", reset_lookup=lambda: month)
+
+    speaker.say("Guthaben leer.")
+
+    assert speaker.bench.until == pytest.approx(month, abs=2)
 
 
 # -- surviving a restart -----------------------------------------------------

@@ -30,10 +30,10 @@ from jarvis.voice.tts import Speaker
 # topped-up account recovers the same day, long enough not to nag.
 DEFAULT_BENCH_SECONDS = 6 * 3600
 
-# A rejected key is a configuration error, not a quota problem -- retrying it
-# on a schedule would never help, but the user may fix it at any moment, so it
-# is benched only briefly.
-BAD_KEY_BENCH_SECONDS = 15 * 60
+# A rejected key or an unknown voice is a configuration error, not a quota
+# problem. Waiting for a quota reset would never fix it, and the user may
+# correct it at any moment -- so these are benched only briefly.
+CONFIG_ERROR_BENCH_SECONDS = 15 * 60
 
 
 @dataclass
@@ -121,9 +121,11 @@ class FallbackSpeaker(Speaker):
             pass  # an unwritable state file must not stop the assistant talking
 
     def _bench_primary(self, reason: str, exc: Exception) -> None:
-        """Take the primary out of play until its quota is plausibly back."""
-        if "rejected" in str(exc).lower() or "key" in str(exc).lower():
-            until = time.time() + BAD_KEY_BENCH_SECONDS
+        """Take the primary out of play until it is plausibly usable again."""
+        # Only a spent quota is worth waiting a month for. A mistyped voice or
+        # a bad key must not sideline the paid voice until next month.
+        if reason in {"key rejected", "unknown voice"}:
+            until = time.time() + CONFIG_ERROR_BENCH_SECONDS
         else:
             reset = self.reset_lookup() if self.reset_lookup else 0.0
             # A reported reset in the past, or absurdly far out, is not usable.
@@ -163,6 +165,10 @@ class FallbackSpeaker(Speaker):
             return "service unreachable"
         if "rejected" in message and "key" in message:
             return "key rejected"
+        # A voice the account does not have is a setting to correct, not an
+        # outage to wait out.
+        if "voice" in message and ("does not exist" in message or "no elevenlabs voice" in message):
+            return "unknown voice"
         if "returned an error" in message:
             return "service error"
         return ""

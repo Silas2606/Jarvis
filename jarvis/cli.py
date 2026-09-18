@@ -229,7 +229,11 @@ def command_voices(config: Config) -> int:
 
     engine = config.voice.tts_engine
     if engine == "auto":
-        engine = build_speaker(config).name
+        speaker = build_speaker(config)
+        # While a paid voice is benched the active speaker is the understudy,
+        # but the voices worth listing are still the configured engine's.
+        primary = getattr(speaker, "primary", speaker)
+        engine = primary.name
 
     if engine not in {"edge", "piper", "elevenlabs"}:
         print(f"  The {engine!r} engine has no voice list; it uses the system voice.")
