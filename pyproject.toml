@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-assistant"
+version = "0.1.0"
+description = "A voice-first personal assistant in the spirit of J.A.R.V.I.S."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Core: everything needed for the brain and the text console.
+dependencies = [
+    "anthropic>=0.40",
+    "rich>=13.7",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+# The voice stack. Installed by default via `pip install -e ".[voice]"`.
+voice = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.24",
+    "faster-whisper>=1.0",
+    "openwakeword>=0.6",
+    "webrtcvad>=2.0.10",
+]
+# Spoken output over Microsoft's neural voices (online, very good German).
+edge = ["edge-tts>=6.1"]
+# Calendar + mail.
+google = [
+    "google-api-python-client>=2.120",
+    "google-auth-httplib2>=0.2",
+    "google-auth-oauthlib>=1.2",
+]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+all = ["jarvis-assistant[voice,edge,google,dev]"]
+
+[project.scripts]
+jarvis = "jarvis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
