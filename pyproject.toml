@@ -24,7 +24,12 @@ voice = [
     "numpy>=1.24",
     "faster-whisper>=1.0",
     "openwakeword>=0.6",
-    "webrtcvad>=2.0.10",
+    # webrtcvad ships no Windows wheel and needs a C compiler there, so
+    # Windows gets the prebuilt fork instead. Without either, voice activity
+    # detection falls back to an energy gate -- workable, but slower to notice
+    # that you have stopped speaking.
+    "webrtcvad>=2.0.10; platform_system != 'Windows'",
+    "webrtcvad-wheels>=2.0.10; platform_system == 'Windows'",
 ]
 # Spoken output over Microsoft's neural voices (online, very good German).
 edge = ["edge-tts>=6.1"]

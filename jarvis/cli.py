@@ -138,7 +138,12 @@ def command_doctor(config: Config) -> int:
 
         check("voice activity", True, "webrtcvad")
     except ImportError:
-        check("voice activity", False, "energy fallback", "pip install webrtcvad")
+        check(
+            "voice activity",
+            False,
+            "energy fallback (slower to detect end of speech)",
+            "pip install webrtcvad-wheels   (on Windows; pip install webrtcvad elsewhere)",
+        )
 
     google = is_configured(config)
     check(

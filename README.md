@@ -297,6 +297,7 @@ jarvis/
 | Stimme abgelehnt | `jarvis voices` — der Name muss exakt stimmen |
 | Stimme klingt steif | Eine andere aus `jarvis voices` probieren; die Multilingual-Stimmen klingen am natürlichsten |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
+| Antwortet träge | `jarvis doctor` — sagt *voice activity: energy fallback*? Dann `pip install webrtcvad-wheels` (Windows) |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |
 
 Wenn etwas mit der Claude-API nicht stimmt, sagt Jarvis es in einem Satz —
