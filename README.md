@@ -135,6 +135,7 @@ dir zu.
 | `jarvis devices` | Listet die Audiogeräte |
 | `jarvis say "..."` | Testet die Stimme |
 | `jarvis listen` | Nimmt einmal auf und zeigt das Transkript |
+| `jarvis voices` | Listet die Stimmen, die deine Engine akzeptiert |
 | `jarvis setup google` | Autorisiert Kalender und Mail |
 | `jarvis setup config` | Schreibt eine Beispiel-Konfiguration |
 
@@ -261,7 +262,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-77 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+80 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -293,6 +294,8 @@ jarvis/
 | Wacht nicht auf | `jarvis listen` — kommt das Transkript an? Sonst Mikrofonpegel prüfen |
 | Wacht ständig auf | Kopfhörer benutzen, oder `openwakeword` installieren |
 | Stimme fehlt | `jarvis say "Test"` zeigt die genaue Ursache |
+| Stimme abgelehnt | `jarvis voices` — der Name muss exakt stimmen |
+| Stimme klingt steif | Eine andere aus `jarvis voices` probieren; die Multilingual-Stimmen klingen am natürlichsten |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |
 

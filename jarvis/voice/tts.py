@@ -32,8 +32,10 @@ PIPER_VOICES = {
     "it": "it_IT-riccardo-x_low",
 }
 
+# The multilingual voices are Microsoft's newer generation and sound markedly
+# less stiff than the older neural ones.
 EDGE_VOICES = {
-    "de": "de-DE-ConradNeural",
+    "de": "de-DE-FlorianMultilingualNeural",
     "en": "en-GB-RyanNeural",
     "fr": "fr-FR-HenriNeural",
     "es": "es-ES-AlvaroNeural",
@@ -215,6 +217,18 @@ class PiperSpeaker(Speaker):
                 os.unlink(path)
 
 
+def edge_failure(exc: Exception, voice: str) -> AudioUnavailable:
+    """Explain why edge-tts refused, in terms the user can act on."""
+    # An unknown voice is answered with an empty audio stream rather than a
+    # proper error, so "no audio" almost always means a wrong voice name.
+    if "NoAudioReceived" in type(exc).__name__ or "No audio was received" in str(exc):
+        return AudioUnavailable(
+            f"The voice {voice!r} was refused by the service. "
+            "Run `jarvis voices` to see which ones exist."
+        )
+    return AudioUnavailable(f"edge-tts failed: {exc}")
+
+
 class EdgeSpeaker(Speaker):
     """Microsoft Edge neural voices. Online, but the German is excellent."""
 
@@ -255,7 +269,7 @@ class EdgeSpeaker(Speaker):
                 return
             _play_file(path, self._cancel)
         except Exception as exc:
-            raise AudioUnavailable(f"edge-tts failed: {exc}") from exc
+            raise edge_failure(exc, self.voice) from exc
         finally:
             if os.path.exists(path):
                 os.unlink(path)
@@ -310,6 +324,51 @@ def _espeak_speaker(language: str, rate: float) -> CommandSpeaker:
         raise AudioUnavailable("espeak-ng was not found on PATH.")
     voice = "en-gb" if language.startswith("en") else language[:2]
     return CommandSpeaker("espeak", [binary, "-v", voice, "-s", str(int(165 * rate))])
+
+
+def list_voices(language: str = "", engine: str = "edge") -> list[str]:
+    """The voice names an engine accepts, filtered by language.
+
+    Args:
+        language: Two-letter code; empty lists every voice.
+        engine: Which engine to ask -- "edge" queries the service, "piper"
+            looks for downloaded voice models on disk.
+    """
+    if engine == "piper":
+        found: list[str] = []
+        roots = [
+            Path.home() / ".local/share/piper-voices",
+            Path.home() / ".jarvis/voices",
+            Path("/usr/share/piper-voices"),
+            Path("/usr/local/share/piper-voices"),
+        ]
+        pattern = f"{language[:2]}_*.onnx" if language else "*.onnx"
+        for root in roots:
+            if root.exists():
+                found.extend(str(path) for path in sorted(root.rglob(pattern)))
+        return found
+
+    import asyncio
+
+    try:
+        import edge_tts
+    except ImportError as exc:
+        raise AudioUnavailable(
+            'edge-tts is not installed. Install it with: pip install "jarvis-assistant[edge]"'
+        ) from exc
+
+    try:
+        voices = asyncio.run(edge_tts.list_voices())
+    except Exception as exc:
+        raise AudioUnavailable(f"The voice list could not be fetched: {exc}") from exc
+
+    prefix = f"{language[:2].lower()}-" if language else ""
+    names = [
+        f"{voice['ShortName']:42} {voice.get('Gender', '')}"
+        for voice in sorted(voices, key=lambda v: v["ShortName"])
+        if voice.get("Locale", "").lower().startswith(prefix)
+    ]
+    return names
 
 
 def available_engines() -> list[str]:

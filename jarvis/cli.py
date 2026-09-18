@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     say.add_argument("text", nargs="+")
 
     subcommands.add_parser("listen", help="Record one utterance and print the transcript.")
+    subcommands.add_parser("voices", help="List the voices the speech engine accepts.")
 
     setup = subcommands.add_parser("setup", help="One-off setup steps.")
     setup.add_argument("what", choices=["google", "config"], help="What to set up.")
@@ -170,11 +171,46 @@ def command_say(config: Config, text: str) -> int:
 
     try:
         speaker = build_speaker(config, strict=True)
+        print(f"  voice: {speaker.name}")
+        # Speaking is inside the try as well: a refused voice name fails here,
+        # not while the speaker is being built.
+        speaker.say(text)
     except AudioUnavailable as exc:
         print(f"  ✗ {exc}")
         return 2
-    print(f"  voice: {speaker.name}")
-    speaker.say(text)
+    return 0
+
+
+def command_voices(config: Config) -> int:
+    """List the voice names the configured engine will accept."""
+    from jarvis.voice import AudioUnavailable
+    from jarvis.voice.tts import build_speaker, list_voices
+
+    engine = config.voice.tts_engine
+    if engine == "auto":
+        engine = build_speaker(config).name
+
+    if engine not in {"edge", "piper"}:
+        print(f"  The {engine!r} engine has no voice list; it uses the system voice.")
+        return 0
+
+    try:
+        voices = list_voices(config.voice.language, engine)
+    except AudioUnavailable as exc:
+        print(f"  ✗ {exc}")
+        return 2
+
+    if not voices:
+        print(f"  No {engine} voices found for language {config.voice.language!r}.")
+        return 1
+
+    current = config.voice.tts_voice
+    print(f"  {len(voices)} {engine} voice(s) for {config.voice.language!r}:\n")
+    for voice in voices:
+        marker = " ← in use" if current and voice.split()[0] == current else ""
+        print(f"    {voice}{marker}")
+    print("\n  Try one with:  jarvis say \"Guten Abend, Sir.\"")
+    print("  after setting:  $env:JARVIS_VOICE_TTS_VOICE = \"<name>\"")
     return 0
 
 
@@ -248,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_say(config, " ".join(args.text))
     if args.command == "listen":
         return command_listen(config)
+    if args.command == "voices":
+        return command_voices(config)
     if args.command == "setup":
         return command_setup(config, args.what)
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from jarvis.speech_chunks import SentenceAccumulator, split_sentences
 from jarvis.voice.audio import VoiceActivityDetector, pcm_to_wav
 from jarvis.voice.loop import interpret_yes_no
@@ -163,3 +165,56 @@ def test_whisper_hallucinations_are_dropped():
     assert Transcriber.clean("Vielen Dank.") == ""
     assert Transcriber.clean("Thanks for watching!") == ""
     assert Transcriber.clean("  Wie ist das Wetter?  ") == "Wie ist das Wetter?"
+
+
+# -- speech failures ---------------------------------------------------------
+
+
+def test_a_refused_voice_name_is_explained_not_dumped():
+    """Regression: an unknown voice name produced a raw traceback.
+
+    edge-tts answers an unknown voice with an empty stream, which surfaced as
+    `NoAudioReceived` -- and because `say()` sat outside the CLI's try block,
+    it reached the user as a full stack trace instead of a sentence.
+    """
+    from jarvis.voice.tts import edge_failure
+
+    class NoAudioReceived(Exception):
+        pass
+
+    problem = edge_failure(
+        NoAudioReceived("No audio was received. Please verify that your parameters are correct."),
+        "de-DE-DoesNotExistNeural",
+    )
+    message = str(problem)
+    assert "de-DE-DoesNotExistNeural" in message
+    assert "jarvis voices" in message
+    assert "Traceback" not in message
+
+
+def test_other_edge_failures_keep_their_original_wording():
+    from jarvis.voice.tts import edge_failure
+
+    problem = edge_failure(ConnectionError("network unreachable"), "de-DE-ConradNeural")
+    assert "network unreachable" in str(problem)
+    assert "jarvis voices" not in str(problem)
+
+
+def test_speech_failures_are_reported_rather_than_swallowed():
+    """A mute assistant must at least say why it went mute."""
+    reported: list[Exception] = []
+
+    class BrokenSpeaker(Speaker):
+        name = "broken"
+
+        def _speak(self, text: str) -> None:
+            raise RuntimeError("the voice service said no")
+
+    queue = SpeechQueue(BrokenSpeaker(), on_error=reported.append)
+    queue.say("Das geht schief.")
+    queue.wait_until_done(timeout=5)
+    time.sleep(0.05)
+    queue.shutdown()
+
+    assert len(reported) == 1
+    assert "the voice service said no" in str(reported[0])

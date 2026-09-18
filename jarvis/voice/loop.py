@@ -91,7 +91,7 @@ class VoiceLoop:
         self.detector = detector
         self.reminders = reminders
 
-        self.speech = SpeechQueue(speaker)
+        self.speech = SpeechQueue(speaker, on_error=self._on_speech_error)
         self.microphone = Microphone(config.voice.sample_rate, config.voice.input_device)
         self.vad = VoiceActivityDetector(config.voice.sample_rate)
 
@@ -103,6 +103,10 @@ class VoiceLoop:
         self._awake_detector = AlwaysAwakeDetector()
 
         self.bus.subscribe(self._on_event)
+
+    def _on_speech_error(self, exc: Exception) -> None:
+        """A sentence could not be spoken -- say so in writing at least."""
+        self.bus.emit(EventKind.ERROR, f"I could not say that out loud: {exc}")
 
     # -- event wiring --------------------------------------------------------
 

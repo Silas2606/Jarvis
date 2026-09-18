@@ -13,8 +13,10 @@ _SENTINEL = object()
 class SpeechQueue:
     """Hands sentences to the speaker one at a time, on its own thread."""
 
-    def __init__(self, speaker: Speaker):
+    def __init__(self, speaker: Speaker, on_error=None):
         self.speaker = speaker
+        # Called with the exception when a sentence cannot be spoken.
+        self.on_error = on_error
         self._queue: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._idle = threading.Event()
@@ -37,8 +39,14 @@ class SpeechQueue:
             self._idle.clear()
             try:
                 self.speaker.say(str(item))
-            except Exception:
-                pass  # a mute assistant beats a crashed one
+            except Exception as exc:
+                # A mute assistant beats a crashed one -- but a mute assistant
+                # that says nothing about why is just baffling.
+                if self.on_error is not None:
+                    try:
+                        self.on_error(exc)
+                    except Exception:
+                        pass
             finally:
                 self._queue.task_done()
                 if self._queue.empty():
