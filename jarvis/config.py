@@ -73,7 +73,10 @@ class VoiceConfig:
 
     # Speech to text: "auto" | "faster-whisper" | "whisper-cpp"
     stt_engine: str = "auto"
-    stt_model: str = "small"
+    # "base" transcribes roughly three times faster than "small" on a CPU, and
+    # for spoken commands the accuracy it gives up is usually recovered by the
+    # model reading the request in context. Raise it if you dictate long text.
+    stt_model: str = "base"
     # "auto" | "cpu" | "cuda"
     stt_device: str = "auto"
     whisper_cpp_binary: str = "whisper-cli"
