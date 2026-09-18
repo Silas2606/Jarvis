@@ -124,7 +124,15 @@ def command_doctor(config: Config) -> int:
                 model=config.voice.elevenlabs_model,
                 resolve_voice=False,
             )
-            check("ElevenLabs", True, f"{speaker.check()} ({speaker.voice})")
+            from jarvis.voice.elevenlabs import subscription as eleven_subscription
+
+            detail = f"{speaker.check()} ({speaker.voice})"
+            balance = eleven_subscription(config.voice.elevenlabs_key)
+            if balance.describe():
+                detail += f"  —  {balance.describe()}"
+                if balance.exhausted:
+                    detail += "  (exhausted)"
+            check("ElevenLabs", True, detail)
         except Exception as exc:
             check("ElevenLabs", False, str(exc)[:80], "jarvis voices")
 

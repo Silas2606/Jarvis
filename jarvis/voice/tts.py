@@ -498,7 +498,7 @@ def build_speaker(config, strict: bool = False, notify=None) -> Speaker:
         # ElevenLabs and would be rejected by whatever steps in.
         backup, _ = first_working(free_engines, "")
         if backup is not None:
-            from jarvis.voice.elevenlabs import quota_reset_at
+            from jarvis.voice.elevenlabs import quota_reset_at, subscription
             from jarvis.voice.fallback import FallbackSpeaker
 
             return FallbackSpeaker(
@@ -507,6 +507,7 @@ def build_speaker(config, strict: bool = False, notify=None) -> Speaker:
                 state_path=getattr(config, "tts_state_path", None),
                 notify=notify,
                 reset_lookup=lambda: quota_reset_at(voice.elevenlabs_key),
+                quota_lookup=lambda: subscription(voice.elevenlabs_key),
             )
 
     if speaker is not None:

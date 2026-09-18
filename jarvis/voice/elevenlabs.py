@@ -25,6 +25,7 @@ import os
 import threading
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from typing import Iterator
 
 from jarvis.voice import AudioUnavailable
@@ -102,7 +103,9 @@ def _http_failure(exc: urllib.error.HTTPError) -> ElevenLabsError:
             "That ElevenLabs voice does not exist. Run `jarvis voices` to see yours."
         )
     if exc.code == 429:
-        return ElevenLabsError("The ElevenLabs quota or rate limit is used up.")
+        # Deliberately vague: whether this is a spent month or a burst of
+        # requests is decided by asking the account, not by reading a status.
+        return ElevenLabsError(f"ElevenLabs declined for now (429). {detail}".strip())
     if exc.code == 422:
         return ElevenLabsError(f"ElevenLabs rejected the request: {detail}")
     return ElevenLabsError(f"ElevenLabs returned an error ({exc.code}): {detail}")
@@ -128,24 +131,63 @@ def list_voices(api_key: str = "") -> list[tuple[str, str, str]]:
     return voices
 
 
-def quota_reset_at(api_key: str = "") -> float:
-    """When the character quota next resets, as a unix timestamp.
+@dataclass
+class Subscription:
+    """What the account has spent and when it is refilled."""
 
-    The subscription endpoint reports the exact reset moment, which beats
-    guessing at "some time next month". Returns 0.0 when the account does not
-    report one, and the caller then falls back to a fixed retry interval.
+    used: int = 0
+    limit: int = 0
+    reset_at: float = 0.0
+    known: bool = False
+
+    @property
+    def exhausted(self) -> bool:
+        """Whether the character allowance is genuinely used up."""
+        return self.known and self.limit > 0 and self.used >= self.limit
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limit - self.used) if self.known else 0
+
+    def describe(self) -> str:
+        if not self.known or not self.limit:
+            return ""
+        return f"{self.used:,} / {self.limit:,} characters used".replace(",", ".")
+
+
+def subscription(api_key: str = "") -> Subscription:
+    """Ask the account what it has left.
+
+    A 429 does not say whether the month's allowance is gone or the requests
+    merely came too fast. This does, and the difference is a month of waiting
+    against a few seconds.
     """
     try:
         with _request("/user/subscription", _api_key(api_key)) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception:
-        return 0.0
+        return Subscription()
 
+    reset = 0.0
     for field in ("next_character_count_reset_unix", "next_invoice_time_unix"):
         value = payload.get(field)
         if isinstance(value, (int, float)) and value > 0:
-            return float(value)
-    return 0.0
+            reset = float(value)
+            break
+
+    used = payload.get("character_count")
+    limit = payload.get("character_limit")
+    return Subscription(
+        used=int(used) if isinstance(used, (int, float)) else 0,
+        limit=int(limit) if isinstance(limit, (int, float)) else 0,
+        reset_at=reset,
+        known=isinstance(used, (int, float)) and isinstance(limit, (int, float)),
+    )
+
+
+def quota_reset_at(api_key: str = "") -> float:
+    """When the character quota next resets, as a unix timestamp."""
+    return subscription(api_key).reset_at
 
 
 def first_voice_id(api_key: str = "") -> str:

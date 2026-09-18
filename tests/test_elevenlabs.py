@@ -46,8 +46,15 @@ def test_unknown_voice_points_at_the_voices_command():
     assert "jarvis voices" in str(problem)
 
 
-def test_exhausted_quota_is_distinguished_from_a_broken_key():
-    assert "quota" in str(_http_failure(http_error(429)))
+def test_a_429_does_not_claim_to_know_why():
+    """429 means "not now" -- it does not say whether the month is spent.
+
+    Claiming "quota exhausted" here is what caused a burst of requests to
+    sideline the paid voice until the next billing period.
+    """
+    message = str(_http_failure(http_error(429)))
+    assert "declined for now" in message
+    assert "quota" not in message.lower()
 
 
 def test_the_services_own_complaint_survives():

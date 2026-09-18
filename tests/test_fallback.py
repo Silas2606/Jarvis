@@ -330,3 +330,84 @@ def test_the_understudy_does_not_inherit_the_primarys_voice_id(monkeypatch, tmp_
     # The understudy gets no voice id at all, so it uses its own default.
     assert ("edge", "") in built
     assert isinstance(speaker, FallbackSpeaker)
+
+
+# -- telling a spent month from a busy minute --------------------------------
+
+
+class FakeQuota:
+    def __init__(self, used: int, limit: int, reset_at: float = 0.0, known: bool = True):
+        self.used = used
+        self.limit = limit
+        self.reset_at = reset_at
+        self.known = known
+
+    @property
+    def exhausted(self) -> bool:
+        return self.known and self.limit > 0 and self.used >= self.limit
+
+
+def declined():
+    return AudioUnavailable("ElevenLabs declined for now (429).")
+
+
+def test_a_refusal_with_credit_left_is_treated_as_a_busy_moment(pair, tmp_path):
+    """Regression: two sentences in a row benched the paid voice for 731 hours.
+
+    A 429 can mean the month is gone or simply that requests came too fast.
+    Assuming the former turned a few seconds' wait into a month of silence
+    from the good voice, on an account with credit to spare.
+    """
+    from jarvis.voice.fallback import TRANSIENT_BENCH_SECONDS
+
+    primary, backup = pair
+    primary.failure = declined()
+    month_away = time.time() + 30 * 24 * 3600
+
+    speaker = FallbackSpeaker(
+        primary,
+        backup,
+        tmp_path / "state.json",
+        reset_lookup=lambda: month_away,
+        quota_lookup=lambda: FakeQuota(used=1200, limit=10000, reset_at=month_away),
+    )
+    speaker.say("Zweiter Satz.")
+
+    assert speaker.bench.reason == "temporarily declined"
+    assert speaker.bench.remaining <= TRANSIENT_BENCH_SECONDS
+    assert backup.spoken == ["Zweiter Satz."]
+
+
+def test_a_refusal_on_a_spent_account_waits_for_the_reset(pair, tmp_path):
+    primary, backup = pair
+    primary.failure = declined()
+    month_away = time.time() + 30 * 24 * 3600
+
+    speaker = FallbackSpeaker(
+        primary,
+        backup,
+        tmp_path / "state.json",
+        quota_lookup=lambda: FakeQuota(used=10000, limit=10000, reset_at=month_away),
+    )
+    speaker.say("Wirklich leer.")
+
+    assert speaker.bench.reason == "quota exhausted"
+    assert speaker.bench.until == pytest.approx(month_away, abs=2)
+
+
+def test_an_unanswerable_account_assumes_the_cheaper_mistake(pair, tmp_path):
+    """Unable to check? Retry in a minute rather than give up for a month."""
+    from jarvis.voice.fallback import TRANSIENT_BENCH_SECONDS
+
+    primary, backup = pair
+    primary.failure = declined()
+
+    speaker = FallbackSpeaker(
+        primary,
+        backup,
+        tmp_path / "state.json",
+        quota_lookup=lambda: FakeQuota(0, 0, known=False),
+    )
+    speaker.say("Keine Auskunft.")
+
+    assert speaker.bench.remaining <= TRANSIENT_BENCH_SECONDS

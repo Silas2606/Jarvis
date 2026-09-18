@@ -30,6 +30,10 @@ from jarvis.voice.tts import Speaker
 # topped-up account recovers the same day, long enough not to nag.
 DEFAULT_BENCH_SECONDS = 6 * 3600
 
+# A refusal that is not backed by an empty account -- a burst of requests, a
+# momentary limit -- clears in seconds, not weeks.
+TRANSIENT_BENCH_SECONDS = 90
+
 # A rejected key or an unknown voice is a configuration error, not a quota
 # problem. Waiting for a quota reset would never fix it, and the user may
 # correct it at any moment -- so these are benched only briefly.
@@ -72,6 +76,7 @@ class FallbackSpeaker(Speaker):
         state_path: Path | str | None = None,
         notify: Callable[[str], None] | None = None,
         reset_lookup: Callable[[], float] | None = None,
+        quota_lookup: Callable[[], object] | None = None,
     ):
         super().__init__()
         self.primary = primary
@@ -80,6 +85,9 @@ class FallbackSpeaker(Speaker):
         self.notify = notify
         # Asks the service when the quota returns; None means use the default.
         self.reset_lookup = reset_lookup
+        # Asks the account whether the allowance is actually spent. Without it,
+        # a refusal has to be taken at face value.
+        self.quota_lookup = quota_lookup
         self._lock = threading.Lock()
         self._bench = self._load()
 
@@ -126,11 +134,23 @@ class FallbackSpeaker(Speaker):
         # a bad key must not sideline the paid voice until next month.
         if reason in {"key rejected", "unknown voice"}:
             until = time.time() + CONFIG_ERROR_BENCH_SECONDS
+        elif reason == "declined":
+            # A 429 says "not now", not why. Ask the account: an allowance that
+            # still has characters left means this was a burst, not a month.
+            quota = self.quota_lookup() if self.quota_lookup else None
+            if quota is not None and getattr(quota, "known", False):
+                if getattr(quota, "exhausted", False):
+                    until = self._reset_moment(getattr(quota, "reset_at", 0.0))
+                    reason = "quota exhausted"
+                else:
+                    until = time.time() + TRANSIENT_BENCH_SECONDS
+                    reason = "temporarily declined"
+            else:
+                # Cannot tell -- assume the cheaper mistake and retry soon.
+                until = time.time() + TRANSIENT_BENCH_SECONDS
+                reason = "temporarily declined"
         else:
-            reset = self.reset_lookup() if self.reset_lookup else 0.0
-            # A reported reset in the past, or absurdly far out, is not usable.
-            horizon = time.time() + 40 * 24 * 3600
-            until = reset if time.time() < reset < horizon else time.time() + DEFAULT_BENCH_SECONDS
+            until = self._reset_moment(self.reset_lookup() if self.reset_lookup else 0.0)
 
         with self._lock:
             self._bench = BenchState(until, reason)
@@ -142,6 +162,14 @@ class FallbackSpeaker(Speaker):
                 f"{self.primary.name} is unavailable ({reason}); "
                 f"switching to {self.backup.name} until {when}."
             )
+
+    def _reset_moment(self, reset: float) -> float:
+        """The reported reset time, or a fixed interval when it is unusable."""
+        # A reset in the past, or absurdly far out, is not something to trust.
+        horizon = time.time() + 40 * 24 * 3600
+        if time.time() < reset < horizon:
+            return reset
+        return time.time() + DEFAULT_BENCH_SECONDS
 
     def _clear_bench(self) -> None:
         with self._lock:
@@ -159,6 +187,9 @@ class FallbackSpeaker(Speaker):
     def _recoverable(self, exc: Exception) -> str:
         """Whether this failure is one the backup should take over, and why."""
         message = str(exc).lower()
+        if "declined for now" in message or "429" in message:
+            # Which kind of refusal this is gets decided against the account.
+            return "declined"
         if "quota" in message or "rate limit" in message:
             return "quota exhausted"
         if "not reachable" in message or "timed out" in message:
