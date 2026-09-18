@@ -360,6 +360,14 @@ def list_voices(language: str = "", engine: str = "edge") -> list[str]:
         engine: Which engine to ask -- "edge" queries the service, "piper"
             looks for downloaded voice models on disk.
     """
+    if engine == "elevenlabs":
+        from jarvis.voice.elevenlabs import list_voices as eleven_voices
+
+        return [
+            f"{voice_id:24} {name}" + (f"  ({labels})" if labels else "")
+            for voice_id, name, labels in eleven_voices()
+        ]
+
     if engine == "piper":
         found: list[str] = []
         roots = [
@@ -400,6 +408,8 @@ def list_voices(language: str = "", engine: str = "edge") -> list[str]:
 def available_engines() -> list[str]:
     """Which voices this machine could use right now."""
     found = []
+    if os.environ.get("ELEVENLABS_API_KEY"):
+        found.append("elevenlabs")
     if shutil.which("piper"):
         found.append("piper")
     try:
@@ -423,7 +433,19 @@ def build_speaker(config, strict: bool = False) -> Speaker:
     language = voice.language
     rate = voice.speech_rate
 
+    def elevenlabs():
+        from jarvis.voice.elevenlabs import ElevenLabsSpeaker
+
+        return ElevenLabsSpeaker(
+            api_key=voice.elevenlabs_key,
+            voice=voice.tts_voice,
+            model=voice.elevenlabs_model,
+            rate=rate,
+            resolve_voice=False,
+        )
+
     builders = {
+        "elevenlabs": elevenlabs,
         "piper": lambda: PiperSpeaker(voice.piper_binary, voice.piper_model, language, rate),
         "edge": lambda: EdgeSpeaker(voice.tts_voice, language, rate),
         "say": lambda: _macos_speaker(language, rate),
@@ -431,7 +453,11 @@ def build_speaker(config, strict: bool = False) -> Speaker:
         "none": NullSpeaker,
     }
 
-    order = ["piper", "edge", "say", "espeak"] if wanted == "auto" else [wanted]
+    # ElevenLabs first when a key is present: it is the reason someone set one.
+    automatic = ["piper", "edge", "say", "espeak"]
+    if voice.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY"):
+        automatic.insert(0, "elevenlabs")
+    order = automatic if wanted == "auto" else [wanted]
 
     last: Exception | None = None
     for key in order:

@@ -33,6 +33,7 @@ voice = [
 ]
 # Spoken output over Microsoft's neural voices (online, very good German).
 edge = ["edge-tts>=6.1"]
+# ElevenLabs needs no package -- it is plain REST over the standard library.
 # Calendar + mail.
 google = [
     "google-api-python-client>=2.120",

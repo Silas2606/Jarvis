@@ -71,15 +71,49 @@ brew install portaudio              # macOS
 
 **Die Stimme** wählt Jarvis automatisch. In dieser Reihenfolge:
 
-| Engine   | Qualität | Installation |
-|----------|----------|--------------|
-| `piper`  | sehr gut, lokal, schnell | [Binary + Stimmmodell](https://github.com/rhasspy/piper) nach `~/.local/share/piper-voices/` |
-| `edge`   | exzellent, aber online | `pip install -e ".[edge]"` plus `ffmpeg` |
-| `say`    | gut (macOS eingebaut) | — |
+| Engine | Qualität | Installation |
+|---|---|---|
+| `elevenlabs` | kaum von einem Menschen zu unterscheiden, kostenpflichtig | nur `ELEVENLABS_API_KEY` setzen |
+| `piper` | sehr gut, lokal, schnell | [Binary + Stimmmodell](https://github.com/rhasspy/piper) nach `~/.local/share/piper-voices/` |
+| `edge` | gut, online, gratis | `pip install -e ".[edge]"` plus `ffmpeg` |
+| `say` | brauchbar (macOS eingebaut) | — |
 | `espeak` | robotisch, aber überall da | `sudo apt install espeak-ng` |
 
-Für den Jarvis-Charakter empfohlen: Piper mit `de_DE-thorsten-medium` (deutsch)
-oder `en_GB-alan-medium` (englisch).
+Sobald ein `ELEVENLABS_API_KEY` gesetzt ist, nimmt Jarvis ihn von selbst — das
+ist ja der Grund, warum man einen setzt.
+
+### ElevenLabs
+
+Die natürlichste Stimme, die Jarvis sprechen kann. Schlüssel auf
+[elevenlabs.io](https://elevenlabs.io) unter *Profile* erzeugen, dann:
+
+```powershell
+setx ELEVENLABS_API_KEY "..."      # Windows, danach neues Fenster
+export ELEVENLABS_API_KEY="..."    # macOS/Linux
+```
+
+```bash
+jarvis voices                       # zeigt die Stimmen deines Kontos
+jarvis say "Guten Abend, Sir."
+```
+
+Eine bestimmte Stimme festlegen — `tts_voice` ist hier die Voice-ID aus
+`jarvis voices`:
+
+```toml
+[voice]
+tts_engine = "elevenlabs"
+tts_voice = "21m00Tcm4TlvDq8ikWAM"
+elevenlabs_model = "eleven_flash_v2_5"   # schnellstes; eleven_multilingual_v2 klingt besser
+```
+
+Jarvis fordert das Audio als rohes PCM an und spielt es ab, während es noch
+entsteht — dadurch beginnt die Stimme früher als bei den anderen Engines, und
+ffmpeg wird nicht gebraucht. Erlaubt der Tarif kein PCM, fällt er einmalig auf
+MP3 zurück.
+
+Die Abrechnung läuft nach Zeichen. Gesprochene Antworten sind kurz, das
+kostenlose Kontingent reicht zum Ausprobieren gut aus.
 
 > **Kopfhörer empfohlen.** Ohne sie hört Jarvis über die Lautsprecher seine
 > eigene Stimme. Er kommt damit zurecht — Barge-in verlangt eine Drittelsekunde
@@ -262,7 +296,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-84 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+94 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -279,6 +313,7 @@ jarvis/
   session.py         setzt alles zusammen
   tools/             die Werkzeuge, als Schemas aus Signatur + Docstring
   voice/             Mikrofon, VAD, Whisper, Wake-Word, TTS, der Loop
+  voice/elevenlabs.py  ElevenLabs, als Stream direkt in die Soundkarte
   ui/console.py      das HUD
 ```
 

@@ -82,13 +82,18 @@ class VoiceConfig:
     whisper_cpp_binary: str = "whisper-cli"
     whisper_cpp_model: str = ""
 
-    # Text to speech: "auto" | "piper" | "edge" | "say" | "espeak" | "none"
+    # Text to speech:
+    # "auto" | "elevenlabs" | "piper" | "edge" | "say" | "espeak" | "none"
     tts_engine: str = "auto"
     # Engine-specific voice id. Empty means "pick a sensible one for language".
     tts_voice: str = ""
     piper_binary: str = "piper"
     piper_model: str = ""
     speech_rate: float = 1.0
+    # ElevenLabs: the key may also come from ELEVENLABS_API_KEY, which is the
+    # better place for it -- a key in a config file is a key in a backup.
+    elevenlabs_key: str = ""
+    elevenlabs_model: str = ""
 
 
 @dataclass
@@ -244,7 +249,7 @@ followup_window = 12.0    # seconds you may keep talking without the wake word
 barge_in = true           # interrupt Jarvis by speaking over him
 stt_engine = "auto"       # auto | faster-whisper | whisper-cpp
 stt_model = "base"
-tts_engine = "auto"       # auto | piper | edge | say | espeak | none
+tts_engine = "auto"       # auto | elevenlabs | piper | edge | say | espeak | none
 tts_voice = ""            # engine-specific voice id
 
 [tools]

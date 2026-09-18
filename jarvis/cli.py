@@ -114,6 +114,20 @@ def command_doctor(config: Config) -> int:
         'install piper, or pip install "jarvis-assistant[edge]" plus ffmpeg',
     )
 
+    if os.environ.get("ELEVENLABS_API_KEY") or config.voice.elevenlabs_key:
+        try:
+            from jarvis.voice.elevenlabs import ElevenLabsSpeaker
+
+            speaker = ElevenLabsSpeaker(
+                api_key=config.voice.elevenlabs_key,
+                voice=config.voice.tts_voice,
+                model=config.voice.elevenlabs_model,
+                resolve_voice=False,
+            )
+            check("ElevenLabs", True, f"{speaker.check()} ({speaker.voice})")
+        except Exception as exc:
+            check("ElevenLabs", False, str(exc)[:80], "jarvis voices")
+
     try:
         import sounddevice  # noqa: F401
 
@@ -200,7 +214,7 @@ def command_voices(config: Config) -> int:
     if engine == "auto":
         engine = build_speaker(config).name
 
-    if engine not in {"edge", "piper"}:
+    if engine not in {"edge", "piper", "elevenlabs"}:
         print(f"  The {engine!r} engine has no voice list; it uses the system voice.")
         return 0
 
