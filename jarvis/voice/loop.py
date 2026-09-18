@@ -212,8 +212,9 @@ class VoiceLoop:
             reply = self.brain.ask(text, cancel=self._cancel)
         except BrainError as exc:
             self._stop_watching()
-            self.bus.emit(EventKind.ERROR, str(exc))
-            self.speech.say(str(exc))
+            # The user hears the sentence; the console also gets the detail.
+            self.bus.emit(EventKind.ERROR, exc.spoken, detail=exc.detail, problem=exc.kind)
+            self.speech.say(exc.spoken)
             self.speech.wait_until_done(timeout=30.0)
             return
 

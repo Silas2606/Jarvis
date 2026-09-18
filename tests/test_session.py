@@ -100,3 +100,43 @@ def test_greeting_matches_language(config):
 
     config.voice.language = "en"
     assert greeting_for(config).endswith("All systems ready.")
+
+
+def test_api_failure_is_announced_without_crashing_the_loop(config, tmp_path):
+    """The whole error path, end to end.
+
+    Regression: the failure was reported with `kind=` as event data, which
+    collides with EventBus.emit's own first parameter -- so reporting an API
+    error raised a TypeError of its own and took the assistant down. Testing
+    the exception alone did not catch it; only emitting does.
+    """
+    import anthropic
+    import httpx2 as httpx
+
+    from jarvis.session import ask_once
+
+    body = {
+        "type": "error",
+        "error": {"type": "invalid_request_error", "message": "Your credit balance is too low."},
+    }
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    failure = anthropic.BadRequestError(
+        "boom", response=httpx.Response(400, request=request, json=body), body=body
+    )
+
+    config.voice.language = "de"
+    session = build_session(config, with_console=False, client=FakeClient(failure))
+    events: list = []
+    session.bus.subscribe(events.append)
+
+    try:
+        # Returns a failure code rather than raising.
+        assert ask_once(session, "Wie spät ist es?") == 1
+    finally:
+        session.close()
+
+    errors = [e for e in events if e.kind is EventKind.ERROR]
+    assert len(errors) == 1
+    assert "Guthaben" in errors[0].text
+    assert errors[0].data["problem"] == "no_credit"
+    assert "credit balance" in errors[0].data["detail"]

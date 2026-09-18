@@ -177,3 +177,39 @@ def test_tool_order_is_stable_across_turns(brain):
 
     first, second = agent._client.calls
     assert [t["name"] for t in first["tools"]] == [t["name"] for t in second["tools"]]
+
+
+def test_api_failure_reaches_the_user_as_a_sentence(config, store, bus):
+    """The failure the user actually hit: an empty credit balance."""
+    import anthropic
+    import httpx2 as httpx
+    import pytest
+
+    from jarvis.brain import Brain, BrainError
+    from jarvis.tools import build_registry
+
+    body = {
+        "type": "error",
+        "error": {
+            "type": "invalid_request_error",
+            "message": "Your credit balance is too low to access the Anthropic API.",
+        },
+    }
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    failure = anthropic.BadRequestError(
+        "boom", response=httpx.Response(400, request=request, json=body), body=body
+    )
+
+    config.voice.language = "de"
+    agent = Brain(config, build_registry(config, store, bus), bus, store, client=FakeClient(failure))
+
+    with pytest.raises(BrainError) as caught:
+        agent.ask("Wie spät ist es?")
+
+    error = caught.value
+    assert error.kind == "no_credit"
+    assert "Guthaben" in error.spoken
+    # Nothing machine-shaped survives into what gets spoken.
+    assert "400" not in error.spoken and "{" not in error.spoken
+    # The console still gets the API's own wording.
+    assert "credit balance" in error.detail

@@ -88,14 +88,22 @@ class FakeMessages:
         self._owner.calls.append(params)
         if not self._owner.script:
             raise AssertionError("FakeClient ran out of scripted responses")
-        return FakeStream(self._owner.script.pop(0))
+        item = self._owner.script.pop(0)
+        # A scripted exception stands in for an API failure.
+        if isinstance(item, Exception):
+            raise item
+        return FakeStream(item)
 
 
 class FakeClient:
-    """A scripted Claude: hand it the messages it should return, in order."""
+    """A scripted Claude: hand it the messages it should return, in order.
 
-    def __init__(self, *script: FakeMessage):
-        self.script: list[FakeMessage] = list(script)
+    An ``Exception`` in the script is raised instead of returned, which is how
+    API failures are exercised.
+    """
+
+    def __init__(self, *script):
+        self.script: list = list(script)
         self.calls: list[dict[str, Any]] = []
         self.messages = FakeMessages(self)
         self.beta = SimpleNamespace(messages=FakeMessages(self))

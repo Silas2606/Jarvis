@@ -146,6 +146,11 @@ class Console:
 
         elif kind is EventKind.ERROR:
             self._write(f"  ✗ {event.text}", "red")
+            # The API's own wording, for when the friendly sentence is not
+            # enough to debug with.
+            detail = event.data.get("detail")
+            if detail and detail != event.text:
+                self._write(f"    {_short(detail, 200)}", "grey")
 
 
 def _short(value: object, limit: int = 60) -> str:

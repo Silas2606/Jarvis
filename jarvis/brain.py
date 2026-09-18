@@ -13,6 +13,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from jarvis.apierrors import ApiProblem, diagnose
 from jarvis.events import EventBus, EventKind
 from jarvis.persona import persona_prompt, situation_prompt
 from jarvis.speech_chunks import SentenceAccumulator
@@ -25,7 +26,26 @@ MAX_PAUSE_RESUMES = 5
 
 
 class BrainError(RuntimeError):
-    """Talking to the model failed in a way the user should hear about."""
+    """Talking to the model failed in a way the user should hear about.
+
+    Carries two forms of the same failure: ``spoken`` is the sentence Jarvis
+    says out loud, ``detail`` is the API's own message for the console.
+    """
+
+    def __init__(self, spoken: str, detail: str = "", kind: str = "unknown", retryable: bool = False):
+        super().__init__(spoken)
+        self.spoken = spoken
+        self.detail = detail
+        self.kind = kind
+        self.retryable = retryable
+
+    @classmethod
+    def from_problem(cls, problem: ApiProblem) -> "BrainError":
+        return cls(problem.spoken, problem.detail, problem.kind, problem.retryable)
+
+
+class _RetryWithoutFallbacks(Exception):
+    """Internal: the account cannot use server-side fallbacks; drop and retry."""
 
 
 @dataclass
@@ -181,23 +201,17 @@ class Brain:
                         self.bus.emit(EventKind.REASONING, delta.thinking)
                 message = stream.get_final_message()
         except TypeError as exc:
-            message = str(exc)
-            # The SDK raises TypeError for a missing credential too, which has
-            # nothing to do with the parameters we pass.
-            if "authentication" in message.lower() or "api_key" in message.lower():
-                raise BrainError(
-                    "No Claude credentials were found. Set ANTHROPIC_API_KEY, "
-                    "or run `ant auth login`."
-                ) from exc
             # An older SDK that does not know `fallbacks` -- drop it and retry.
-            if self._use_fallbacks and "unexpected keyword" in message.lower():
+            # Any other TypeError (a missing credential, for instance) is a real
+            # failure and goes through the usual diagnosis.
+            if self._use_fallbacks and "unexpected keyword" in str(exc).lower():
                 self._use_fallbacks = False
                 self.bus.emit(
                     EventKind.NOTICE,
                     "Server-side fallbacks unavailable; continuing without them.",
                 )
                 return self._stream_once(reply, cancel)
-            raise BrainError(f"The request was malformed: {exc}") from exc
+            raise self._translate(exc) from exc
         except Exception as exc:
             raise self._translate(exc) from exc
 
@@ -206,32 +220,18 @@ class Brain:
             self.bus.emit(EventKind.SPEECH_CHUNK, remainder)
         return message
 
-    def _translate(self, exc: Exception) -> BrainError:
+    def _translate(self, exc: Exception) -> Exception:
         """Turn an SDK exception into something worth saying out loud."""
-        try:
-            import anthropic
-        except ImportError:  # pragma: no cover
-            return BrainError(str(exc))
+        problem = diagnose(exc, self.config.brain.model, self.config.voice.language)
 
-        if isinstance(exc, anthropic.AuthenticationError):
-            return BrainError(
-                "The Claude API rejected the credentials. Check ANTHROPIC_API_KEY."
-            )
-        if isinstance(exc, anthropic.NotFoundError):
-            return BrainError(f"The model {self.config.brain.model!r} is not available on this account.")
-        if isinstance(exc, anthropic.RateLimitError):
-            return BrainError("The rate limit is reached. Try again in a moment.")
-        if isinstance(exc, anthropic.BadRequestError):
-            if self._use_fallbacks:
-                # Most likely the fallbacks beta is not enabled for this account.
-                self._use_fallbacks = False
-                return BrainError("__retry_without_fallbacks__")
-            return BrainError(f"The request was rejected: {exc}")
-        if isinstance(exc, anthropic.APIConnectionError):
-            return BrainError("No connection to the Claude API.")
-        if isinstance(exc, anthropic.APIStatusError):
-            return BrainError(f"The Claude API returned an error: {exc}")
-        return BrainError(f"{type(exc).__name__}: {exc}")
+        # A plain rejection while fallbacks are on usually means the beta is not
+        # enabled for this account -- worth one silent retry without it before
+        # troubling the user.
+        if problem.kind == "rejected" and self._use_fallbacks:
+            self._use_fallbacks = False
+            return _RetryWithoutFallbacks()
+
+        return BrainError.from_problem(problem)
 
     # -- the loop ------------------------------------------------------------
 
@@ -247,11 +247,8 @@ class Brain:
 
             try:
                 message = self._stream_once(reply, cancel)
-            except BrainError as exc:
-                if str(exc) == "__retry_without_fallbacks__":
-                    message = self._stream_once(reply, cancel)
-                else:
-                    raise
+            except _RetryWithoutFallbacks:
+                message = self._stream_once(reply, cancel)
 
             if message is None:  # cancelled mid-stream
                 # Drop the dangling user turn so the transcript stays valid.

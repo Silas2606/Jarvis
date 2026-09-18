@@ -261,13 +261,15 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-62 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+77 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
-Abbrüche, Ablehnungen und der Gesprächsverlauf echt geprüft werden.
+Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
+werden.
 
 ```
 jarvis/
   brain.py           Agent-Loop gegen die Messages API
+  apierrors.py       API-Fehler → ein Satz, den man vorlesen kann
   speech_chunks.py   Token-Strom → sprechbare Sätze
   timing.py          „in zehn Minuten" → Zeitstempel
   memory.py          SQLite: Notizen, Aufgaben, Erinnerungen, Fakten
@@ -293,6 +295,11 @@ jarvis/
 | Stimme fehlt | `jarvis say "Test"` zeigt die genaue Ursache |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |
+
+Wenn etwas mit der Claude-API nicht stimmt, sagt Jarvis es in einem Satz —
+kein Guthaben, abgelehnter Schlüssel, Anfragelimit, Überlastung. Die
+technische Meldung der API steht darunter in der Konsole, wird aber nicht
+vorgelesen.
 
 ---
 

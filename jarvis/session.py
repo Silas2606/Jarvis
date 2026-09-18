@@ -207,7 +207,7 @@ def run_text(session: Session, greet: bool = True) -> int:
         try:
             reply = session.brain.ask(line)
         except BrainError as exc:
-            session.bus.emit(EventKind.ERROR, str(exc))
+            session.bus.emit(EventKind.ERROR, exc.spoken, detail=exc.detail, problem=exc.kind)
             continue
         if reply.text:
             session.bus.emit(EventKind.ANSWER, reply.text, tools=reply.tool_calls)
@@ -223,7 +223,7 @@ def ask_once(session: Session, text: str) -> int:
     try:
         reply = session.brain.ask(text)
     except BrainError as exc:
-        session.bus.emit(EventKind.ERROR, str(exc))
+        session.bus.emit(EventKind.ERROR, exc.spoken, detail=exc.detail, problem=exc.kind)
         return 1
     if reply.text:
         session.bus.emit(EventKind.ANSWER, reply.text, tools=reply.tool_calls)
