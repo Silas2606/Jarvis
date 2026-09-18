@@ -128,6 +128,23 @@ def command_doctor(config: Config) -> int:
         except Exception as exc:
             check("ElevenLabs", False, str(exc)[:80], "jarvis voices")
 
+        state = config.tts_state_path
+        if state.exists():
+            import json as _json
+            import time as _time
+
+            try:
+                bench = _json.loads(state.read_text("utf-8"))
+                until = float(bench.get("until", 0))
+            except Exception:
+                until = 0
+            if until > _time.time():
+                when = _time.strftime("%d.%m. %H:%M", _time.localtime(until))
+                lines.append(
+                    f"    ElevenLabs is paused ({bench.get('reason', '?')}); "
+                    f"retrying at {when}. Delete {state} to retry now."
+                )
+
     try:
         import sounddevice  # noqa: F401
 

@@ -94,6 +94,10 @@ class VoiceConfig:
     # better place for it -- a key in a config file is a key in a backup.
     elevenlabs_key: str = ""
     elevenlabs_model: str = ""
+    # When a metered voice runs out of credit, keep talking in a free one
+    # rather than going silent. The paid voice is retried once its quota
+    # resets -- the service reports when that is.
+    tts_fallback: bool = True
 
 
 @dataclass
@@ -134,6 +138,11 @@ class Config:
     @property
     def config_path(self) -> Path:
         return self.home / "config.toml"
+
+    @property
+    def tts_state_path(self) -> Path:
+        """Where the fallback remembers that a paid voice is out of credit."""
+        return self.home / "tts_state.json"
 
     @property
     def google_credentials_path(self) -> Path:
@@ -251,6 +260,7 @@ stt_engine = "auto"       # auto | faster-whisper | whisper-cpp
 stt_model = "base"
 tts_engine = "auto"       # auto | elevenlabs | piper | edge | say | espeak | none
 tts_voice = ""            # engine-specific voice id
+tts_fallback = true       # bei leerem Guthaben auf eine freie Stimme ausweichen
 
 [tools]
 calendar = true

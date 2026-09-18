@@ -141,8 +141,14 @@ class Console:
             self._write(f"\n  ⏰ {event.text}\n", "yellow")
 
         elif kind is EventKind.NOTICE:
-            if event.text and self.verbose:
-                self._write(f"  {event.text}", "grey")
+            if not event.text:
+                return
+            # A change of voice is worth seeing even when not running verbose.
+            about_voice = any(
+                word in event.text for word in ("switching to", "available again")
+            )
+            if self.verbose or about_voice:
+                self._write(f"  {event.text}", "yellow" if about_voice else "grey")
 
         elif kind is EventKind.ERROR:
             self._write(f"  ✗ {event.text}", "red")

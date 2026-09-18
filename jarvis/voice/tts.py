@@ -426,8 +426,15 @@ def available_engines() -> list[str]:
     return found
 
 
-def build_speaker(config, strict: bool = False) -> Speaker:
-    """Pick a voice according to the config."""
+def build_speaker(config, strict: bool = False, notify=None) -> Speaker:
+    """Pick a voice according to the config.
+
+    Args:
+        config: The Jarvis configuration.
+        strict: Raise instead of falling back to a silent speaker.
+        notify: Called with a sentence when the active voice changes, so the
+            console can report a switch to the understudy and back.
+    """
     voice = config.voice
     wanted = (voice.tts_engine or "auto").lower()
     language = voice.language
@@ -453,22 +460,47 @@ def build_speaker(config, strict: bool = False) -> Speaker:
         "none": NullSpeaker,
     }
 
+    free_engines = ["piper", "edge", "say", "espeak"]
     # ElevenLabs first when a key is present: it is the reason someone set one.
-    automatic = ["piper", "edge", "say", "espeak"]
-    if voice.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY"):
+    automatic = list(free_engines)
+    metered = bool(voice.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY"))
+    if metered:
         automatic.insert(0, "elevenlabs")
     order = automatic if wanted == "auto" else [wanted]
 
-    last: Exception | None = None
-    for key in order:
-        builder = builders.get(key)
-        if builder is None:
-            last = AudioUnavailable(f"Unknown speech engine: {key!r}")
-            continue
-        try:
-            return builder()
-        except Exception as exc:
-            last = exc
+    def first_working(candidates: list[str]) -> tuple[Speaker | None, Exception | None]:
+        failure: Exception | None = None
+        for key in candidates:
+            builder = builders.get(key)
+            if builder is None:
+                failure = AudioUnavailable(f"Unknown speech engine: {key!r}")
+                continue
+            try:
+                return builder(), None
+            except Exception as exc:
+                failure = exc
+        return None, failure
+
+    speaker, last = first_working(order)
+
+    # A metered voice gets a free understudy, so an exhausted quota means a
+    # plainer voice rather than a mute assistant.
+    if speaker is not None and speaker.name == "elevenlabs" and voice.tts_fallback:
+        backup, _ = first_working(free_engines)
+        if backup is not None:
+            from jarvis.voice.elevenlabs import quota_reset_at
+            from jarvis.voice.fallback import FallbackSpeaker
+
+            return FallbackSpeaker(
+                primary=speaker,
+                backup=backup,
+                state_path=getattr(config, "tts_state_path", None),
+                notify=notify,
+                reset_lookup=lambda: quota_reset_at(voice.elevenlabs_key),
+            )
+
+    if speaker is not None:
+        return speaker
     if strict and last is not None:
         raise last if isinstance(last, AudioUnavailable) else AudioUnavailable(str(last))
     return NullSpeaker()

@@ -112,8 +112,33 @@ entsteht — dadurch beginnt die Stimme früher als bei den anderen Engines, und
 ffmpeg wird nicht gebraucht. Erlaubt der Tarif kein PCM, fällt er einmalig auf
 MP3 zurück.
 
-Die Abrechnung läuft nach Zeichen. Gesprochene Antworten sind kurz, das
-kostenlose Kontingent reicht zum Ausprobieren gut aus.
+Den Schlüssel findest du in den Workspace-Einstellungen unter *API Keys*
+([direkter Link](https://elevenlabs.io/app/settings/api-keys)) — er wird nur
+einmal angezeigt.
+
+**Wenn das Guthaben leer ist, verstummt Jarvis nicht.** Er wechselt auf die
+beste freie Stimme, die installiert ist, sagt einmal Bescheid und macht weiter:
+
+```
+  elevenlabs is unavailable (quota exhausted); switching to edge until 01.10. 00:00.
+```
+
+Den Zeitpunkt errät er nicht — ElevenLabs meldet selbst, wann das Kontingent
+zurückgesetzt wird. Dann probiert er den nächsten Satz wieder mit der guten
+Stimme und bleibt dabei, wenn es klappt:
+
+```
+  elevenlabs is available again.
+```
+
+Der Zustand überlebt Neustarts, damit nicht jeder Start eine aussichtslose
+Anfrage an ein leeres Konto verschwendet. `jarvis doctor` zeigt, ob gerade
+pausiert wird und bis wann; wer sofort neu probieren will, löscht
+`~/.jarvis/tts_state.json`. Abschalten mit `tts_fallback = false`.
+
+Die Abrechnung läuft nach Zeichen. Im kostenlosen Tarif sind 10.000 Zeichen
+pro Monat etwa sechzig bis hundertfünfzig gesprochene Antworten — zum
+Ausprobieren gut, für den Alltag zu wenig. Genau dafür gibt es den Rückfall.
 
 > **Kopfhörer empfohlen.** Ohne sie hört Jarvis über die Lautsprecher seine
 > eigene Stimme. Er kommt damit zurecht — Barge-in verlangt eine Drittelsekunde
@@ -296,7 +321,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-94 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+109 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -314,6 +339,7 @@ jarvis/
   tools/             die Werkzeuge, als Schemas aus Signatur + Docstring
   voice/             Mikrofon, VAD, Whisper, Wake-Word, TTS, der Loop
   voice/elevenlabs.py  ElevenLabs, als Stream direkt in die Soundkarte
+  voice/fallback.py    weicht auf eine freie Stimme aus, wenn das Guthaben leer ist
   ui/console.py      das HUD
 ```
 
@@ -331,6 +357,7 @@ jarvis/
 | Stimme fehlt | `jarvis say "Test"` zeigt die genaue Ursache |
 | Stimme abgelehnt | `jarvis voices` — der Name muss exakt stimmen |
 | Stimme klingt steif | Eine andere aus `jarvis voices` probieren; die Multilingual-Stimmen klingen am natürlichsten |
+| Plötzlich andere Stimme | ElevenLabs-Guthaben leer — `jarvis doctor` sagt, bis wann pausiert wird |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
 | Antwortet träge | `jarvis doctor` — sagt *voice activity: energy fallback*? Dann `pip install webrtcvad-wheels` (Windows) |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |

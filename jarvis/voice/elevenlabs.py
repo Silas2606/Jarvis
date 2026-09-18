@@ -128,6 +128,26 @@ def list_voices(api_key: str = "") -> list[tuple[str, str, str]]:
     return voices
 
 
+def quota_reset_at(api_key: str = "") -> float:
+    """When the character quota next resets, as a unix timestamp.
+
+    The subscription endpoint reports the exact reset moment, which beats
+    guessing at "some time next month". Returns 0.0 when the account does not
+    report one, and the caller then falls back to a fixed retry interval.
+    """
+    try:
+        with _request("/user/subscription", _api_key(api_key)) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return 0.0
+
+    for field in ("next_character_count_reset_unix", "next_invoice_time_unix"):
+        value = payload.get(field)
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+    return 0.0
+
+
 def first_voice_id(api_key: str = "") -> str:
     """Pick a voice when none is configured, rather than guessing at an id."""
     voices = list_voices(api_key)

@@ -106,7 +106,10 @@ def run_voice(session: Session, greet: bool = True) -> int:
         )
         return 2
 
-    speaker = build_speaker(config)
+    speaker = build_speaker(
+        config,
+        notify=lambda message: session.bus.emit(EventKind.NOTICE, message),
+    )
     if speaker.name == "none":
         session.bus.emit(
             EventKind.NOTICE,
