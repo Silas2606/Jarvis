@@ -328,7 +328,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-120 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+119 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
