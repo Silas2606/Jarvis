@@ -1,0 +1,517 @@
+"""Speech synthesis -- Jarvis' actual voice.
+
+Several engines, picked in order of quality unless the config names one:
+
+    piper   local neural voices, fast, no network
+    edge    Microsoft's neural voices, excellent German, needs the internet
+    say     macOS built-in
+    espeak  espeak-ng, robotic but present on most Linux boxes
+
+Every engine must be interruptible: when the user talks over Jarvis, speech
+stops within a frame or two. Playback therefore runs in chunks with a cancel
+flag checked between them, and subprocess engines are killed outright.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import tempfile
+import threading
+from pathlib import Path
+
+from jarvis.voice import AudioUnavailable
+
+# Voices chosen to fit the part: calm, measured, a touch formal.
+PIPER_VOICES = {
+    "de": "de_DE-thorsten-medium",
+    "en": "en_GB-alan-medium",
+    "fr": "fr_FR-gilles-low",
+    "es": "es_ES-davefx-medium",
+    "it": "it_IT-riccardo-x_low",
+}
+
+# The multilingual voices are Microsoft's newer generation and sound markedly
+# less stiff than the older neural ones.
+EDGE_VOICES = {
+    "de": "de-DE-FlorianMultilingualNeural",
+    "en": "en-GB-RyanNeural",
+    "fr": "fr-FR-HenriNeural",
+    "es": "es-ES-AlvaroNeural",
+    "it": "it-IT-DiegoNeural",
+    "nl": "nl-NL-MaartenNeural",
+    "pt": "pt-PT-DuarteNeural",
+    "pl": "pl-PL-MarekNeural",
+}
+
+MACOS_VOICES = {"de": "Markus", "en": "Daniel", "fr": "Thomas", "es": "Jorge", "it": "Luca"}
+
+EXTERNAL_PLAYERS = ("ffplay", "mpv", "afplay", "mpg123", "aplay", "paplay")
+
+
+class Speaker:
+    """Interface: text in, sound out, interruptible."""
+
+    name = "none"
+
+    def __init__(self) -> None:
+        self._cancel = threading.Event()
+        self._speaking = threading.Event()
+
+    @property
+    def voice_name(self) -> str:
+        """The specific voice in use, for display and diagnosis."""
+        return ""
+
+    def describe(self) -> str:
+        """Engine and voice together, e.g. "edge (de-DE-FlorianMultilingualNeural)"."""
+        voice = self.voice_name
+        return f"{self.name} ({voice})" if voice else self.name
+
+    @property
+    def is_speaking(self) -> bool:
+        return self._speaking.is_set()
+
+    def say(self, text: str) -> None:
+        """Speak, blocking until finished or interrupted."""
+        if not text.strip():
+            return
+        self._cancel.clear()
+        self._speaking.set()
+        try:
+            self._speak(text.strip())
+        finally:
+            self._speaking.clear()
+
+    def stop(self) -> None:
+        """Interrupt whatever is being said."""
+        self._cancel.set()
+
+    def _speak(self, text: str) -> None:  # pragma: no cover
+        raise NotImplementedError
+
+
+def _play_pcm(data: bytes, sample_rate: int, channels: int, cancel: threading.Event) -> bool:
+    """Play raw PCM through sounddevice, checking the cancel flag as it goes."""
+    try:
+        import numpy
+        import sounddevice
+    except ImportError:
+        return False
+
+    try:
+        samples = numpy.frombuffer(data, dtype=numpy.int16)
+        if channels > 1:
+            samples = samples.reshape(-1, channels)
+        # 100 ms blocks: small enough that an interrupt feels immediate.
+        block = sample_rate // 10
+        with sounddevice.OutputStream(samplerate=sample_rate, channels=channels, dtype="int16") as stream:
+            for start in range(0, len(samples), block):
+                if cancel.is_set():
+                    stream.abort()
+                    return True
+                stream.write(samples[start : start + block])
+        return True
+    except Exception:
+        return False
+
+
+def _play_wav_bytes(data: bytes, cancel: threading.Event) -> bool:
+    import io
+    import wave
+
+    try:
+        with wave.open(io.BytesIO(data), "rb") as handle:
+            frames = handle.readframes(handle.getnframes())
+            return _play_pcm(frames, handle.getframerate(), handle.getnchannels(), cancel)
+    except Exception:
+        return False
+
+
+def _external_player() -> list[str] | None:
+    for binary in EXTERNAL_PLAYERS:
+        if shutil.which(binary):
+            if binary == "ffplay":
+                return [binary, "-nodisp", "-autoexit", "-loglevel", "quiet"]
+            if binary == "mpv":
+                return [binary, "--really-quiet", "--no-video"]
+            return [binary]
+    return None
+
+
+def _play_file(path: str, cancel: threading.Event) -> bool:
+    """Play a file with whatever player is installed, killable on cancel."""
+    player = _external_player()
+    if player is None:
+        return False
+    process = subprocess.Popen(
+        player + [path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    try:
+        while process.poll() is None:
+            if cancel.wait(0.05):
+                process.terminate()
+                try:
+                    process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:  # pragma: no cover
+                    process.kill()
+                return True
+        return True
+    finally:
+        if process.poll() is None:  # pragma: no cover
+            process.kill()
+
+
+class PiperSpeaker(Speaker):
+    """piper: local neural TTS. Writes WAV to stdout, which we play ourselves."""
+
+    name = "piper"
+
+    def __init__(self, binary: str = "piper", model: str = "", language: str = "de", rate: float = 1.0):
+        super().__init__()
+        if not shutil.which(binary):
+            raise AudioUnavailable(f"The piper binary {binary!r} was not found on PATH.")
+        self.binary = binary
+        self.language = language
+        self.rate = rate
+        self.model = model or self._find_model(language)
+
+        if not self.model:
+            raise AudioUnavailable(
+                "No piper voice model was found. Download one (e.g. "
+                f"{PIPER_VOICES.get(language[:2], 'en_GB-alan-medium')}.onnx) and set "
+                "voice.piper_model in the config."
+            )
+
+    @property
+    def voice_name(self) -> str:
+        return Path(self.model).stem if self.model else ""
+
+    @staticmethod
+    def _find_model(language: str) -> str:
+        """Look in the usual places for a voice matching the language."""
+        wanted = PIPER_VOICES.get(language[:2], "")
+        roots = [
+            Path.home() / ".local/share/piper-voices",
+            Path.home() / ".jarvis/voices",
+            Path("/usr/share/piper-voices"),
+            Path("/usr/local/share/piper-voices"),
+        ]
+        for root in roots:
+            if not root.exists():
+                continue
+            if wanted:
+                exact = list(root.rglob(f"{wanted}.onnx"))
+                if exact:
+                    return str(exact[0])
+            for candidate in root.rglob(f"{language[:2]}_*.onnx"):
+                return str(candidate)
+        return ""
+
+    def _speak(self, text: str) -> None:
+        command = [self.binary, "--model", self.model, "--output_file", "-"]
+        if self.rate and abs(self.rate - 1.0) > 0.01:
+            # piper's length_scale is inverse to speed.
+            command += ["--length_scale", f"{1.0 / self.rate:.3f}"]
+        try:
+            result = subprocess.run(
+                command, input=text.encode("utf-8"), capture_output=True, timeout=120
+            )
+        except Exception as exc:
+            raise AudioUnavailable(f"piper failed: {exc}") from exc
+        if result.returncode != 0 or not result.stdout:
+            raise AudioUnavailable(f"piper failed: {result.stderr.decode('utf-8', 'replace')[:200]}")
+        if not _play_wav_bytes(result.stdout, self._cancel):
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+                handle.write(result.stdout)
+                path = handle.name
+            try:
+                _play_file(path, self._cancel)
+            finally:
+                os.unlink(path)
+
+
+def edge_failure(exc: Exception, voice: str) -> AudioUnavailable:
+    """Explain why edge-tts refused, in terms the user can act on."""
+    # An unknown voice is answered with an empty audio stream rather than a
+    # proper error, so "no audio" almost always means a wrong voice name.
+    if "NoAudioReceived" in type(exc).__name__ or "No audio was received" in str(exc):
+        return AudioUnavailable(
+            f"The voice {voice!r} was refused by the service. "
+            "Run `jarvis voices` to see which ones exist."
+        )
+    return AudioUnavailable(f"edge-tts failed: {exc}")
+
+
+class EdgeSpeaker(Speaker):
+    """Microsoft Edge neural voices. Online, but the German is excellent."""
+
+    name = "edge"
+
+    def __init__(self, voice: str = "", language: str = "de", rate: float = 1.0):
+        super().__init__()
+        try:
+            import edge_tts  # noqa: F401
+        except ImportError as exc:
+            raise AudioUnavailable(
+                'edge-tts is not installed. Install it with: pip install "jarvis-assistant[edge]"'
+            ) from exc
+        if _external_player() is None:
+            raise AudioUnavailable(
+                "edge-tts needs an audio player for MP3. Install ffmpeg (ffplay) or mpv."
+            )
+        self.voice = voice or EDGE_VOICES.get(language[:2], EDGE_VOICES["en"])
+        self.rate = rate
+
+    @property
+    def voice_name(self) -> str:
+        return self.voice
+
+    def _speak(self, text: str) -> None:
+        import asyncio
+
+        import edge_tts
+
+        percent = int(round((self.rate - 1.0) * 100))
+        rate = f"{percent:+d}%"
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as handle:
+            path = handle.name
+        try:
+            async def synthesise() -> None:
+                communicate = edge_tts.Communicate(text, self.voice, rate=rate)
+                await communicate.save(path)
+
+            asyncio.run(synthesise())
+            if self._cancel.is_set():
+                return
+            _play_file(path, self._cancel)
+        except Exception as exc:
+            raise edge_failure(exc, self.voice) from exc
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+
+class CommandSpeaker(Speaker):
+    """A speaking subprocess -- macOS `say` or `espeak-ng`."""
+
+    def __init__(self, name: str, command: list[str]):
+        super().__init__()
+        self.name = name
+        self.command = command
+
+    @property
+    def voice_name(self) -> str:
+        # The voice follows a -v flag, for both `say` and espeak.
+        if "-v" in self.command:
+            return self.command[self.command.index("-v") + 1]
+        return ""
+
+    def _speak(self, text: str) -> None:
+        process = subprocess.Popen(
+            self.command + [text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        while process.poll() is None:
+            if self._cancel.wait(0.05):
+                process.terminate()
+                try:
+                    process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:  # pragma: no cover
+                    process.kill()
+                return
+
+
+class NullSpeaker(Speaker):
+    """No voice available; the console still shows what would have been said."""
+
+    name = "none"
+
+    def _speak(self, text: str) -> None:
+        return
+
+
+def _macos_speaker(language: str, rate: float) -> CommandSpeaker:
+    if not shutil.which("say"):
+        raise AudioUnavailable("The `say` command is only on macOS.")
+    command = ["say"]
+    voice = MACOS_VOICES.get(language[:2])
+    if voice:
+        command += ["-v", voice]
+    if rate and abs(rate - 1.0) > 0.01:
+        command += ["-r", str(int(180 * rate))]
+    return CommandSpeaker("say", command)
+
+
+def _espeak_speaker(language: str, rate: float) -> CommandSpeaker:
+    binary = shutil.which("espeak-ng") or shutil.which("espeak")
+    if not binary:
+        raise AudioUnavailable("espeak-ng was not found on PATH.")
+    voice = "en-gb" if language.startswith("en") else language[:2]
+    return CommandSpeaker("espeak", [binary, "-v", voice, "-s", str(int(165 * rate))])
+
+
+def list_voices(language: str = "", engine: str = "edge") -> list[str]:
+    """The voice names an engine accepts, filtered by language.
+
+    Args:
+        language: Two-letter code; empty lists every voice.
+        engine: Which engine to ask -- "edge" queries the service, "piper"
+            looks for downloaded voice models on disk.
+    """
+    if engine == "elevenlabs":
+        from jarvis.voice.elevenlabs import list_voices as eleven_voices
+
+        return [
+            f"{voice_id:24} {name}" + (f"  ({labels})" if labels else "")
+            for voice_id, name, labels in eleven_voices()
+        ]
+
+    if engine == "piper":
+        found: list[str] = []
+        roots = [
+            Path.home() / ".local/share/piper-voices",
+            Path.home() / ".jarvis/voices",
+            Path("/usr/share/piper-voices"),
+            Path("/usr/local/share/piper-voices"),
+        ]
+        pattern = f"{language[:2]}_*.onnx" if language else "*.onnx"
+        for root in roots:
+            if root.exists():
+                found.extend(str(path) for path in sorted(root.rglob(pattern)))
+        return found
+
+    import asyncio
+
+    try:
+        import edge_tts
+    except ImportError as exc:
+        raise AudioUnavailable(
+            'edge-tts is not installed. Install it with: pip install "jarvis-assistant[edge]"'
+        ) from exc
+
+    try:
+        voices = asyncio.run(edge_tts.list_voices())
+    except Exception as exc:
+        raise AudioUnavailable(f"The voice list could not be fetched: {exc}") from exc
+
+    prefix = f"{language[:2].lower()}-" if language else ""
+    names = [
+        f"{voice['ShortName']:42} {voice.get('Gender', '')}"
+        for voice in sorted(voices, key=lambda v: v["ShortName"])
+        if voice.get("Locale", "").lower().startswith(prefix)
+    ]
+    return names
+
+
+def available_engines() -> list[str]:
+    """Which voices this machine could use right now."""
+    found = []
+    if os.environ.get("ELEVENLABS_API_KEY"):
+        found.append("elevenlabs")
+    if shutil.which("piper"):
+        found.append("piper")
+    try:
+        import edge_tts  # noqa: F401
+
+        if _external_player():
+            found.append("edge")
+    except ImportError:
+        pass
+    if shutil.which("say"):
+        found.append("say")
+    if shutil.which("espeak-ng") or shutil.which("espeak"):
+        found.append("espeak")
+    return found
+
+
+def build_speaker(config, strict: bool = False, notify=None) -> Speaker:
+    """Pick a voice according to the config.
+
+    Args:
+        config: The Jarvis configuration.
+        strict: Raise instead of falling back to a silent speaker.
+        notify: Called with a sentence when the active voice changes, so the
+            console can report a switch to the understudy and back.
+    """
+    voice = config.voice
+    wanted = (voice.tts_engine or "auto").lower()
+    language = voice.language
+    rate = voice.speech_rate
+
+    def build(engine: str, chosen_voice: str) -> Speaker:
+        """Build one engine with the voice id meant for *that* engine.
+
+        `tts_voice` is engine-specific: an ElevenLabs id means nothing to edge
+        and vice versa. An understudy is therefore built with no voice at all,
+        so it uses its own language default.
+        """
+        if engine == "elevenlabs":
+            from jarvis.voice.elevenlabs import ElevenLabsSpeaker
+
+            return ElevenLabsSpeaker(
+                api_key=voice.elevenlabs_key,
+                voice=chosen_voice,
+                model=voice.elevenlabs_model,
+                rate=rate,
+                resolve_voice=False,
+            )
+        if engine == "piper":
+            model = voice.piper_model or (chosen_voice if chosen_voice.endswith(".onnx") else "")
+            return PiperSpeaker(voice.piper_binary, model, language, rate)
+        if engine == "edge":
+            return EdgeSpeaker(chosen_voice, language, rate)
+        if engine == "say":
+            return _macos_speaker(language, rate)
+        if engine == "espeak":
+            return _espeak_speaker(language, rate)
+        if engine == "none":
+            return NullSpeaker()
+        raise AudioUnavailable(f"Unknown speech engine: {engine!r}")
+
+    free_engines = ["piper", "edge", "say", "espeak"]
+    # ElevenLabs first when a key is present: it is the reason someone set one.
+    automatic = list(free_engines)
+    metered = bool(voice.elevenlabs_key or os.environ.get("ELEVENLABS_API_KEY"))
+    if metered:
+        automatic.insert(0, "elevenlabs")
+    order = automatic if wanted == "auto" else [wanted]
+
+    def first_working(
+        candidates: list[str], chosen_voice: str = ""
+    ) -> tuple[Speaker | None, Exception | None]:
+        failure: Exception | None = None
+        for key in candidates:
+            try:
+                return build(key, chosen_voice), None
+            except Exception as exc:
+                failure = exc
+        return None, failure
+
+    speaker, last = first_working(order, voice.tts_voice)
+
+    # A metered voice gets a free understudy, so an exhausted quota means a
+    # plainer voice rather than a mute assistant.
+    if speaker is not None and speaker.name == "elevenlabs" and voice.tts_fallback:
+        # No voice id for the understudy: the configured one belongs to
+        # ElevenLabs and would be rejected by whatever steps in.
+        backup, _ = first_working(free_engines, "")
+        if backup is not None:
+            from jarvis.voice.elevenlabs import quota_reset_at, subscription
+            from jarvis.voice.fallback import FallbackSpeaker
+
+            return FallbackSpeaker(
+                primary=speaker,
+                backup=backup,
+                state_path=getattr(config, "tts_state_path", None),
+                notify=notify,
+                reset_lookup=lambda: quota_reset_at(voice.elevenlabs_key),
+                quota_lookup=lambda: subscription(voice.elevenlabs_key),
+            )
+
+    if speaker is not None:
+        return speaker
+    if strict and last is not None:
+        raise last if isinstance(last, AudioUnavailable) else AudioUnavailable(str(last))
+    return NullSpeaker()

@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Never commit credentials or personal data.
+.env
+google_client_secret.json
+google_token.json
+*.db
+.jarvis/
