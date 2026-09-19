@@ -14,6 +14,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.send",
+    # Read-only channel analytics, and the titles to go with the numbers.
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+    "https://www.googleapis.com/auth/youtube.readonly",
 ]
 
 _SETUP_HINT = (
@@ -64,14 +67,19 @@ def load_credentials(config, interactive: bool = False):
         except Exception:
             credentials = None
 
-    if credentials and credentials.valid:
+    # A token minted before a scope was added is valid but insufficient, and
+    # the resulting 403 is far less helpful than re-consenting here.
+    if credentials and credentials.valid and _covers_scopes(credentials):
         return credentials
 
     if credentials and credentials.expired and credentials.refresh_token:
         try:
             credentials.refresh(Request())
-            token_path.write_text(credentials.to_json(), encoding="utf-8")
-            return credentials
+            if _covers_scopes(credentials):
+                token_path.write_text(credentials.to_json(), encoding="utf-8")
+                return credentials
+            # Refreshing cannot add a scope that was never granted.
+            credentials = None
         except Exception:
             credentials = None
 
@@ -90,6 +98,11 @@ def load_credentials(config, interactive: bool = False):
     token_path.write_text(credentials.to_json(), encoding="utf-8")
     token_path.chmod(0o600)
     return credentials
+
+
+def _covers_scopes(credentials) -> bool:
+    granted = set(getattr(credentials, "scopes", None) or [])
+    return set(SCOPES) <= granted if granted else False
 
 
 def get_service(config, api: str, version: str, interactive: bool = False):

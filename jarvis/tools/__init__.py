@@ -50,6 +50,7 @@ def build_registry(config, store, bus=None, confirm=None) -> ToolRegistry:
         TASK_TOOLS,
     )
     from jarvis.tools.time_tools import TIME_TOOLS
+    from jarvis.tools.youtube_tools import YOUTUBE_TOOLS
 
     context = ToolContext(config=config, store=store, bus=bus, confirm=confirm)
     registry = ToolRegistry(context=context)
@@ -74,6 +75,8 @@ def build_registry(config, store, bus=None, confirm=None) -> ToolRegistry:
         registry.register(*MAIL_TOOLS)
     if getattr(config.tools, "browser", True):
         registry.register(*BROWSER_TOOLS)
+    if getattr(config.tools, "youtube", True):
+        registry.register(*YOUTUBE_TOOLS)
 
     if config.brain.web_access:
         registry.register_server_tool(WEB_SEARCH_TOOL)

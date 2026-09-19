@@ -120,6 +120,11 @@ class ToolsConfig:
     microsoft_token: str = ""  # defaults to <home>/microsoft_token.json
     # Opening pages in the browser and reading them.
     browser: bool = True
+    # Channel analytics, through the already-authorised Google account.
+    youtube: bool = True
+    # An explicit Chromium for rendering pages, when Playwright's own build is
+    # not the one to use. Also read from JARVIS_CHROMIUM.
+    browser_executable: str = ""
 
 
 @dataclass

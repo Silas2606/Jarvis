@@ -37,6 +37,8 @@ edge = ["edge-tts>=6.1"]
 # A real application window instead of a browser tab. The interface itself
 # needs nothing: it is served by the standard library.
 window = ["pywebview>=5.0"]
+# Reading pages that need JavaScript or a sign-in.
+browser = ["playwright>=1.40"]
 # Microsoft To Do (and anything else behind the Graph API).
 microsoft = ["msal>=1.28"]
 # Calendar + mail.
@@ -46,7 +48,7 @@ google = [
     "google-auth-oauthlib>=1.2",
 ]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
-all = ["jarvis-assistant[voice,edge,google,microsoft,window,dev]"]
+all = ["jarvis-assistant[voice,edge,google,microsoft,browser,window,dev]"]
 
 [project.scripts]
 jarvis = "jarvis.cli:main"

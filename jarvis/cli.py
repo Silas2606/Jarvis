@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("listen", help="Record one utterance and print the transcript.")
     subcommands.add_parser("voices", help="List the voices the speech engine accepts.")
 
+    login = subcommands.add_parser(
+        "browser-login", help="Sign in to a site in Jarvis' own browser profile."
+    )
+    login.add_argument("url", help="The page to sign in to, e.g. studio.youtube.com")
+
     setup = subcommands.add_parser("setup", help="One-off setup steps.")
     setup.add_argument(
         "what", choices=["google", "microsoft", "config"], help="What to set up."
@@ -315,6 +320,26 @@ def command_listen(config: Config) -> int:
     return 0
 
 
+def command_browser_login(config: Config, url: str) -> int:
+    """Open a visible browser in Jarvis' profile so a site can be signed in to."""
+    from jarvis.tools.browser_tools import to_url
+    from jarvis.tools.page_render import RenderUnavailable, open_for_login, profile_dir
+
+    config.ensure_home()
+    target = to_url(url)
+    print(f"  Profil: {profile_dir(config)}")
+    try:
+        open_for_login(config, target)
+    except RenderUnavailable as exc:
+        print(f"  ✗ {exc}")
+        return 2
+    except Exception as exc:
+        print(f"  ✗ {exc}")
+        return 2
+    print("  ✓ Sitzung gespeichert. Jarvis kann diese Seite jetzt lesen.")
+    return 0
+
+
 def command_setup(config: Config, what: str) -> int:
     if what == "config":
         config.ensure_home()
@@ -377,6 +402,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_listen(config)
     if args.command == "voices":
         return command_voices(config)
+    if args.command == "browser-login":
+        return command_browser_login(config, args.url)
     if args.command == "setup":
         return command_setup(config, args.what)
 

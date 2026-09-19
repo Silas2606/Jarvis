@@ -211,7 +211,41 @@ lokalen Liste; die Werkzeuge heißen gleich, Jarvis merkt den Unterschied
 nicht. Angefragt wird nur `Tasks.ReadWrite` — Mail und Dateien bleiben außen
 vor.
 
-### 4. Kalender und Mail
+### 4. Seiten hinter Login lesen
+
+```bash
+pip install -e ".[browser]"
+playwright install chromium
+```
+
+Jarvis bekommt ein eigenes Browser-Profil unter `~/.jarvis/browser-profile`.
+Pro Seite meldest du dich dort einmal an:
+
+```bash
+jarvis browser-login studio.youtube.com
+```
+
+Es öffnet sich ein sichtbares Fenster — anmelden, Fenster schließen, fertig.
+Die Sitzung bleibt in Jarvis' Profil, dein eigener Browser bleibt unberührt.
+Danach kann er solche Seiten lesen und zusammenfassen.
+
+> Das Profil enthält deine Anmelde-Cookies und ist damit so schützenswert wie
+> ein Passwortmanager. Es liegt unter `~/.jarvis` und verlässt den Rechner
+> nicht. Gelesen wird nur — geklickt, getippt oder abgeschickt wird nichts.
+
+**Für YouTube brauchst du das nicht.** Kanalzahlen kommen über die Analytics
+API, und zwar als Daten statt als gerenderte Seite — genauer, schneller und
+stabil gegenüber Umbauten der Oberfläche. Dafür nur:
+
+```bash
+jarvis setup google
+```
+
+Das ist auch dann nötig, wenn Google schon eingerichtet ist: Die
+YouTube-Berechtigungen sind neu hinzugekommen und müssen einmal bestätigt
+werden.
+
+### 5. Kalender und Mail
 
 ```bash
 pip install -e ".[google]"
@@ -263,6 +297,7 @@ dir zu.
 | `jarvis voices` | Listet die Stimmen, die deine Engine akzeptiert |
 | `jarvis setup google` | Autorisiert Kalender und Mail |
 | `jarvis setup microsoft` | Autorisiert Microsoft To Do |
+| `jarvis browser-login <url>` | Meldet Jarvis' Browser-Profil bei einer Seite an |
 | `jarvis setup config` | Schreibt eine Beispiel-Konfiguration |
 
 Nützliche Schalter: `--verbose` (zeigt Denkprozess und Tool-Ergebnisse),
@@ -326,6 +361,14 @@ zusammenfassen lassen. Abgerufen werden nur öffentliche Adressen: Anfragen an
 anhand der aufgelösten IP, nicht des Namens. Das ist kein Schutz vor dir,
 sondern vor Texten, die Jarvis liest — eine Mail kann ihn sonst auffordern,
 Dienste in deinem Netz abzufragen.
+
+**YouTube** — Kanalzahlen aus der Analytics API: Aufrufe, Wiedergabezeit,
+Abonnenten, die besten Videos eines Zeitraums, Traffic-Quellen, Tagesverlauf.
+Läuft über deinen bereits autorisierten Google-Zugang, nur lesend.
+
+**Seiten hinter Login** — für alles, was erst durch JavaScript entsteht oder
+eine Anmeldung braucht, lädt Jarvis die Seite in einem echten Browser. Dafür
+hat er ein eigenes Profil, getrennt von deinem.
 
 **Zeit** — die Rechnung, bei der Sprachmodelle am häufigsten danebenliegen,
 macht ein getesteter Parser: „in zehn Minuten", „übermorgen halb drei",
@@ -395,7 +438,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-166 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+184 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -413,6 +456,8 @@ jarvis/
   tools/             die Werkzeuge, als Schemas aus Signatur + Docstring
   tools/browser_tools.py    Seiten öffnen und lesen
   tools/microsoft_tools.py  Microsoft To Do, unter denselben Namen
+  tools/youtube_tools.py    Kanalzahlen aus der Analytics API
+  tools/page_render.py      Seiten, die erst durch JavaScript entstehen
   voice/             Mikrofon, VAD, Whisper, Wake-Word, TTS, der Loop
   voice/elevenlabs.py  ElevenLabs, als Stream direkt in die Soundkarte
   voice/fallback.py    weicht auf eine freie Stimme aus, wenn das Guthaben leer ist

@@ -144,14 +144,32 @@ def open_page(ctx, target: str) -> str:
 
 
 @tool
-def read_page(ctx, url: str) -> str:
+def read_page(ctx, url: str, rendered: bool = False, wait_for: str = "") -> str:
     """Fetch a web page and return its text, to answer questions about it.
+
+    For YouTube channel figures, prefer the youtube_ tools: they return the
+    same numbers as structured data, which reads aloud far better than a
+    rendered dashboard.
 
     Args:
         url: The full address of the page to read.
+        rendered: Load the page in a real browser first. Needed for anything
+            behind a sign-in, and for applications that build their content
+            with JavaScript -- dashboards, analytics, web mail. A plain fetch
+            returns an empty shell for those.
+        wait_for: A CSS selector to wait for before reading, when the
+            interesting part of the page arrives after the rest.
     """
     target = to_url(url)
     check_public(target)
+
+    if rendered:
+        from jarvis.tools.page_render import render_text
+
+        text = render_text(ctx.config, target, wait_for=wait_for)
+        if len(text) > PAGE_LIMIT:
+            text = text[:PAGE_LIMIT] + "\n[…gekürzt]"
+        return text
 
     request = urllib.request.Request(target, headers={"User-Agent": USER_AGENT})
     try:
