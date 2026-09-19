@@ -125,3 +125,63 @@ def test_the_profile_is_jarvis_own_not_the_users(config, tmp_path):
 
     config.home = tmp_path / "home"
     assert profile_dir(config) == tmp_path / "home" / "browser-profile"
+
+
+# -- looking like a browser, because it is one -------------------------------
+
+
+def test_the_automation_flag_is_not_advertised(config):
+    """Sign-in pages refuse browsers that announce themselves as automated.
+
+    The user types their own password into this window; it being driven by a
+    script to open is not a reason for Google to treat it as a bot.
+    """
+    from jarvis.tools.page_render import STEALTH_ARGS, _launch_options
+
+    options = _launch_options(config, headless=False, size=(1280, 900))
+
+    assert "--enable-automation" in options["ignore_default_args"]
+    assert "--disable-blink-features=AutomationControlled" in options["args"]
+    assert STEALTH_ARGS  # and the rest of them are passed through
+
+
+def test_an_installed_browser_is_preferred_over_the_bundled_one(config, monkeypatch):
+    """A real Chrome is far likelier to be allowed to sign in."""
+    from jarvis.tools.page_render import _open_context
+
+    tried: list[str] = []
+
+    class FakePlaywright:
+        class chromium:
+            @staticmethod
+            def launch_persistent_context(profile, channel=None, **kw):
+                tried.append(channel or "bundled")
+                if channel == "chrome":
+                    raise RuntimeError("not installed")
+                return "context"
+
+    result = _open_context(FakePlaywright, __import__("pathlib").Path("/tmp/p"), {"headless": True})
+
+    assert tried[0] == "chrome"       # asked for a real Chrome first
+    assert tried[1] == "msedge"       # then Edge
+    assert result == "context"
+
+
+def test_an_explicit_executable_skips_the_channel_search(config, monkeypatch):
+    from jarvis.tools.page_render import _open_context
+
+    tried: list[str] = []
+
+    class FakePlaywright:
+        class chromium:
+            @staticmethod
+            def launch_persistent_context(profile, channel=None, **kw):
+                tried.append(channel or "bundled")
+                return "context"
+
+    _open_context(
+        FakePlaywright,
+        __import__("pathlib").Path("/tmp/p"),
+        {"headless": True, "executable_path": "/opt/chrome"},
+    )
+    assert tried == ["bundled"]

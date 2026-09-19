@@ -33,6 +33,47 @@ def profile_dir(config) -> Path:
     return Path(getattr(config, "home", Path.home() / ".jarvis")) / "browser-profile"
 
 
+# Chromium as Playwright ships it announces itself as automated, and some
+# sign-in pages refuse it outright ("this browser may not be secure"). Using
+# an installed Chrome or Edge, and not advertising the automation flag, makes
+# the window an ordinary browser again -- which is what it is: the user types
+# their own password into it.
+STEALTH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-default-browser-check",
+    "--no-first-run",
+]
+
+# Real browsers to prefer over the bundled build, in order.
+CHANNELS = ("chrome", "msedge")
+
+
+def _launch_options(config, headless: bool, size: tuple[int, int]) -> dict:
+    options: dict = {
+        "headless": headless,
+        "viewport": {"width": size[0], "height": size[1]},
+        "args": list(STEALTH_ARGS),
+        "ignore_default_args": ["--enable-automation"],
+    }
+    executable = _executable(config)
+    if executable:
+        options["executable_path"] = executable
+    return options
+
+
+def _open_context(playwright, profile: Path, options: dict):
+    """Prefer an installed Chrome or Edge; fall back to the bundled build."""
+    if "executable_path" not in options:
+        for channel in CHANNELS:
+            try:
+                return playwright.chromium.launch_persistent_context(
+                    str(profile), channel=channel, **options
+                )
+            except Exception:
+                continue
+    return playwright.chromium.launch_persistent_context(str(profile), **options)
+
+
 def _executable(config) -> str:
     """An explicit Chromium path, when the bundled one is not the right build.
 
@@ -74,17 +115,11 @@ def render_text(config, url: str, wait_for: str = "", timeout_ms: int = LOAD_TIM
     profile.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
-        options: dict = {
-            "headless": True,
-            "viewport": {"width": 1440, "height": 1000},
-            "locale": getattr(getattr(config, "voice", None), "language", "de") or "de",
-        }
-        executable = _executable(config)
-        if executable:
-            options["executable_path"] = executable
+        options = _launch_options(config, headless=True, size=(1440, 1000))
+        options["locale"] = getattr(getattr(config, "voice", None), "language", "de") or "de"
 
         try:
-            context = playwright.chromium.launch_persistent_context(str(profile), **options)
+            context = _open_context(playwright, profile, options)
         except Exception as exc:
             raise RenderUnavailable(
                 f"The browser could not be started: {exc}. You may need to run "
@@ -144,11 +179,16 @@ def open_for_login(config, url: str) -> None:
     profile.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
-        options: dict = {"headless": False, "viewport": {"width": 1280, "height": 900}}
-        executable = _executable(config)
-        if executable:
-            options["executable_path"] = executable
-        context = playwright.chromium.launch_persistent_context(str(profile), **options)
+        options = _launch_options(config, headless=False, size=(1280, 900))
+        context = _open_context(playwright, profile, options)
+        # Remove the one property that most reliably gives an automated
+        # browser away, before any page script can read it.
+        try:
+            context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            )
+        except Exception:
+            pass
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=LOAD_TIMEOUT_MS)
         print("\n  Melde dich im Fenster an. Schließe es, wenn du fertig bist.")

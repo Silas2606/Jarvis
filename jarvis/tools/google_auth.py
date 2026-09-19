@@ -7,6 +7,7 @@ calendar is out of reach rather than crashing on import.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -69,13 +70,13 @@ def load_credentials(config, interactive: bool = False):
 
     # A token minted before a scope was added is valid but insufficient, and
     # the resulting 403 is far less helpful than re-consenting here.
-    if credentials and credentials.valid and _covers_scopes(credentials):
+    if credentials and credentials.valid and _covers_scopes(token_path):
         return credentials
 
     if credentials and credentials.expired and credentials.refresh_token:
         try:
             credentials.refresh(Request())
-            if _covers_scopes(credentials):
+            if _covers_scopes(token_path):
                 token_path.write_text(credentials.to_json(), encoding="utf-8")
                 return credentials
             # Refreshing cannot add a scope that was never granted.
@@ -84,6 +85,13 @@ def load_credentials(config, interactive: bool = False):
             credentials = None
 
     if not interactive:
+        missing = set(SCOPES) - granted_scopes(token_path)
+        if token_path.exists() and missing:
+            short = ", ".join(sorted(scope.rsplit("/", 1)[-1] for scope in missing))
+            raise GoogleUnavailable(
+                f"Google access is missing a permission ({short}). Run "
+                "`jarvis setup google` again to grant it."
+            )
         raise GoogleUnavailable(
             "Google access needs to be authorised once. Run `jarvis setup google` "
             "in a terminal."
@@ -100,9 +108,25 @@ def load_credentials(config, interactive: bool = False):
     return credentials
 
 
-def _covers_scopes(credentials) -> bool:
-    granted = set(getattr(credentials, "scopes", None) or [])
-    return set(SCOPES) <= granted if granted else False
+def granted_scopes(token_path: Path) -> set[str]:
+    """The scopes the stored token was actually granted.
+
+    Not `credentials.scopes`: `from_authorized_user_file(path, SCOPES)` copies
+    the scopes you pass in onto the object, so reading them back compares the
+    request with itself and always agrees. The file is the only honest record.
+    """
+    try:
+        data = json.loads(token_path.read_text("utf-8"))
+    except Exception:
+        return set()
+    scopes = data.get("scopes")
+    if isinstance(scopes, str):
+        scopes = scopes.split()
+    return set(scopes or [])
+
+
+def _covers_scopes(token_path: Path) -> bool:
+    return set(SCOPES) <= granted_scopes(token_path)
 
 
 def get_service(config, api: str, version: str, interactive: bool = False):

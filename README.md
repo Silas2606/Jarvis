@@ -233,6 +233,13 @@ Danach kann er solche Seiten lesen und zusammenfassen.
 > ein Passwortmanager. Es liegt unter `~/.jarvis` und verlässt den Rechner
 > nicht. Gelesen wird nur — geklickt, getippt oder abgeschickt wird nichts.
 
+Jarvis nimmt dafür bevorzugt dein installiertes Chrome oder Edge statt des
+mitgelieferten Chromium, weil manche Anmeldeseiten automatisierte Browser
+abweisen („Dieser Browser ist möglicherweise nicht sicher"). **Bei Google
+klappt die Anmeldung trotzdem oft nicht** — Google erkennt ferngesteuerte
+Fenster recht zuverlässig und ändert die Erkennung laufend. Für YouTube
+brauchst du das aber gar nicht: Die Zahlen kommen über die Analytics API.
+
 **Für YouTube brauchst du das nicht.** Kanalzahlen kommen über die Analytics
 API, und zwar als Daten statt als gerenderte Seite — genauer, schneller und
 stabil gegenüber Umbauten der Oberfläche. Dafür nur:
@@ -438,7 +445,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-184 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+189 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -483,6 +490,7 @@ jarvis/
 | Plötzlich andere Stimme | ElevenLabs-Guthaben leer — `jarvis doctor` sagt, bis wann pausiert wird |
 | „elevenlabs paused" trotz Guthaben | Falscher Schlüssel oder falsche Stimme. Nach 15 Minuten wird erneut probiert; sofort geht es mit `rm ~/.jarvis/tts_state.json`. `jarvis doctor` zeigt den echten Zeichenstand |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
+| „insufficient permissions" bei YouTube | `jarvis setup google` erneut ausführen — die YouTube-Rechte sind neu |
 | Antwortet träge | `jarvis doctor` — sagt *voice activity: energy fallback*? Dann `pip install webrtcvad-wheels` (Windows) |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |
 
