@@ -242,15 +242,25 @@ brauchst du das aber gar nicht: Die Zahlen kommen über die Analytics API.
 
 **Für YouTube brauchst du das nicht.** Kanalzahlen kommen über die Analytics
 API, und zwar als Daten statt als gerenderte Seite — genauer, schneller und
-stabil gegenüber Umbauten der Oberfläche. Dafür nur:
+stabil gegenüber Umbauten der Oberfläche.
+
+Dafür sind drei Dinge nötig, und alle drei werden gebraucht:
+
+1. **Zwei APIs im Projekt aktivieren** — [YouTube Data API
+   v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
+   und [YouTube Analytics
+   API](https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com)
+2. **Das Konto als Testnutzer eintragen**, das den Kanal besitzt (OAuth-Zustimmungsbildschirm → Testnutzer)
+3. **Neu autorisieren** mit genau diesem Konto:
 
 ```bash
 jarvis setup google
 ```
 
-Das ist auch dann nötig, wenn Google schon eingerichtet ist: Die
-YouTube-Berechtigungen sind neu hinzugekommen und müssen einmal bestätigt
-werden.
+Schritt 3 ist auch dann nötig, wenn Google längst eingerichtet ist: Die
+YouTube-Berechtigungen kamen später dazu. Fehlt Schritt 1, meldet Jarvis
+`accessNotConfigured` und nennt die fehlende API samt Link — dagegen hilft
+kein erneutes Autorisieren.
 
 ### 5. Kalender und Mail
 
@@ -445,7 +455,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-189 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+194 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -491,6 +501,7 @@ jarvis/
 | „elevenlabs paused" trotz Guthaben | Falscher Schlüssel oder falsche Stimme. Nach 15 Minuten wird erneut probiert; sofort geht es mit `rm ~/.jarvis/tts_state.json`. `jarvis doctor` zeigt den echten Zeichenstand |
 | Unterbricht sich selbst | Kopfhörer, oder `barge_in = false` |
 | „insufficient permissions" bei YouTube | `jarvis setup google` erneut ausführen — die YouTube-Rechte sind neu |
+| „accessNotConfigured" bei YouTube | Die APIs sind im Projekt nicht aktiviert — Jarvis nennt den Link |
 | Antwortet träge | `jarvis doctor` — sagt *voice activity: energy fallback*? Dann `pip install webrtcvad-wheels` (Windows) |
 | Bricht mitten im Wort ab | Ebenfalls Echo — siehe oben |
 

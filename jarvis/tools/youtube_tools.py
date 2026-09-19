@@ -18,6 +18,20 @@ from jarvis.tools.google_auth import GoogleUnavailable, get_service
 ANALYTICS_API = ("youtubeAnalytics", "v2")
 DATA_API = ("youtube", "v3")
 
+# Where each API is switched on. A 403 that says "not configured" means the
+# project never enabled it, which no amount of re-authorising will fix -- so
+# the message has to say which one and where.
+ENABLE_LINKS = {
+    "youtubeAnalytics": (
+        "YouTube Analytics API",
+        "https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com",
+    ),
+    "youtube": (
+        "YouTube Data API v3",
+        "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
+    ),
+}
+
 # The figures a person actually asks about, in the order they ask.
 CHANNEL_METRICS = (
     "views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,"
@@ -59,18 +73,45 @@ def _window(days: int) -> tuple[str, str]:
     return (end - timedelta(days=days - 1)).isoformat(), end.isoformat()
 
 
+def _explain(exc: Exception, api: str) -> ToolError:
+    """Turn a Google API failure into the step that fixes it.
+
+    The three failures here need three different actions, and the raw error
+    distinguishes them poorly: a missing scope needs re-authorising, a
+    disabled API needs a click in the console, and a missing channel needs
+    neither.
+    """
+    message = str(exc)
+    lowered = message.lower()
+
+    if "accessnotconfigured" in lowered or "has not been used in project" in lowered:
+        name, link = ENABLE_LINKS.get(api, ("the YouTube API", ""))
+        return ToolError(
+            f"The {name} is not enabled in your Google Cloud project. "
+            f"Enable it at {link} and try again in a minute. "
+            "Re-authorising will not help."
+        )
+    if "403" in message and ("scope" in lowered or "insufficientpermissions" in lowered):
+        return ToolError(
+            "The YouTube permission is missing. Run `jarvis setup google` again "
+            "to grant it."
+        )
+    if "quotaexceeded" in lowered or "429" in message:
+        return ToolError("The YouTube API quota for today is used up.")
+    if "channelnotfound" in lowered or "no channel" in lowered:
+        return ToolError(
+            "That Google account has no YouTube channel. Sign in with the account "
+            "that owns the channel: `jarvis setup google`."
+        )
+    return ToolError(f"YouTube could not be read: {message}")
+
+
 def _query(ctx, **params):
     service = _analytics(ctx)
     try:
         return service.reports().query(ids="channel==MINE", **params).execute()
     except Exception as exc:
-        message = str(exc)
-        if "403" in message and "scope" in message.lower():
-            raise ToolError(
-                "The YouTube permission is missing. Run `jarvis setup google` again "
-                "to grant it."
-            ) from exc
-        raise ToolError(f"YouTube Analytics could not be read: {exc}") from exc
+        raise _explain(exc, "youtubeAnalytics") from exc
 
 
 def _rows(response) -> tuple[list[str], list[list]]:
@@ -266,7 +307,7 @@ def youtube_recent_uploads(ctx, limit: int = 10) -> str:
     except ToolError:
         raise
     except Exception as exc:
-        raise ToolError(f"The uploads could not be read: {exc}") from exc
+        raise _explain(exc, "youtube") from exc
 
     entries = playlist.get("items", [])
     if not entries:

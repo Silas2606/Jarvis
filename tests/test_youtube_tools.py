@@ -203,3 +203,56 @@ def test_an_empty_period_is_reported_not_faked(analytics, ctx, monkeypatch):
 
     monkeypatch.setattr(youtube_tools, "_analytics", lambda ctx: type("S", (), {"reports": lambda self: Reports()})())
     assert "No data" in youtube_tools.youtube_channel_stats.func(ctx, days=7)
+
+
+# -- telling the three failures apart ----------------------------------------
+
+
+def test_a_disabled_api_names_itself_and_the_place_to_enable_it():
+    """Regression: this arrived as an opaque 403 with a bare URL.
+
+    "accessNotConfigured" means the project never switched the API on. It
+    looks like a permission error and is not one -- re-authorising forever
+    would never fix it.
+    """
+    from jarvis.tools.youtube_tools import _explain
+
+    failure = RuntimeError(
+        '<HttpError 403 when requesting https://youtube.googleapis.com/... returned '
+        '"YouTube Data API v3 has not been used in project 123 before or it is '
+        'disabled". Details: "accessNotConfigured">'
+    )
+    problem = _explain(failure, "youtube")
+
+    assert "not enabled" in str(problem)
+    assert "console.cloud.google.com/apis/library/youtube.googleapis.com" in str(problem)
+    # And it says plainly that the other remedy is the wrong one.
+    assert "Re-authorising will not help" in str(problem)
+
+
+def test_the_analytics_api_points_at_its_own_page():
+    from jarvis.tools.youtube_tools import _explain
+
+    problem = _explain(RuntimeError("403 accessNotConfigured"), "youtubeAnalytics")
+    assert "youtubeanalytics.googleapis.com" in str(problem)
+
+
+def test_a_missing_scope_still_asks_for_re_authorisation():
+    from jarvis.tools.youtube_tools import _explain
+
+    problem = _explain(RuntimeError('403 ... reason "insufficientPermissions"'), "youtube")
+    assert "jarvis setup google" in str(problem)
+    assert "not enabled" not in str(problem)
+
+
+def test_an_account_without_a_channel_is_told_so():
+    from jarvis.tools.youtube_tools import _explain
+
+    problem = _explain(RuntimeError("channelNotFound"), "youtube")
+    assert "no YouTube channel" in str(problem)
+
+
+def test_an_exhausted_quota_is_not_mistaken_for_a_setup_problem():
+    from jarvis.tools.youtube_tools import _explain
+
+    assert "quota" in str(_explain(RuntimeError("quotaExceeded"), "youtube")).lower()
