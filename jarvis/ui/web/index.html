@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="grid">
+
+  <header class="bar">
+    <div class="brand">
+      <span class="dot" id="pulse"></span>
+      <span class="wordmark">J·A·R·V·I·S</span>
+      <span class="subtitle">Just A Rather Very Intelligent System</span>
+    </div>
+    <div class="state" id="state-chip">
+      <span class="state-label" id="state-label">verbinde…</span>
+    </div>
+    <div class="clock">
+      <div class="time" id="clock-time">--:--:--</div>
+      <div class="date" id="clock-date">—</div>
+    </div>
+  </header>
+
+  <aside class="panel left">
+    <section class="block">
+      <h2>System</h2>
+      <dl class="readout" id="system-readout">
+        <dt>Gehirn</dt><dd id="sys-brain">—</dd>
+        <dt>Ohren</dt><dd id="sys-ears">—</dd>
+        <dt>Stimme</dt><dd id="sys-voice">—</dd>
+        <dt>Werkzeuge</dt><dd id="sys-tools">—</dd>
+      </dl>
+    </section>
+
+    <section class="block">
+      <h2>Mikrofon</h2>
+      <canvas id="scope" class="scope"></canvas>
+      <div class="meter-row">
+        <span class="meter-label">Pegel</span>
+        <div class="meter"><i id="level-bar"></i></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Sitzung</h2>
+      <dl class="readout">
+        <dt>Wortwechsel</dt><dd id="stat-turns">0</dd>
+        <dt>Werkzeuge</dt><dd id="stat-tools">0</dd>
+        <dt>Token</dt><dd id="stat-tokens">0</dd>
+      </dl>
+    </section>
+
+    <section class="log">
+      <h2>Protokoll</h2>
+      <ul id="log-lines"></ul>
+    </section>
+  </aside>
+
+  <main class="stage">
+    <canvas id="core" class="core"></canvas>
+    <div class="core-caption">
+      <div class="core-state" id="core-state">BEREIT</div>
+      <div class="core-hint" id="core-hint">Sag „Jarvis“</div>
+    </div>
+  </main>
+
+  <aside class="panel right">
+    <section class="block">
+      <h2>Aufgaben <span class="count" id="count-tasks">0</span></h2>
+      <ul class="list" id="list-tasks"><li class="empty">nichts offen</li></ul>
+    </section>
+    <section class="block">
+      <h2>Erinnerungen <span class="count" id="count-reminders">0</span></h2>
+      <ul class="list" id="list-reminders"><li class="empty">keine</li></ul>
+    </section>
+    <section class="block grow">
+      <h2>Termine <span class="count" id="count-events">0</span></h2>
+      <ul class="list" id="list-events"><li class="empty">—</li></ul>
+    </section>
+  </aside>
+
+  <section class="transcript" id="transcript">
+    <div class="welcome">
+      <p>Verbindung wird aufgebaut…</p>
+    </div>
+  </section>
+
+  <footer class="composer">
+    <button class="mic-toggle" id="mic-toggle" title="Status">
+      <span class="mic-dot"></span>
+    </button>
+    <input id="input" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Sag „Jarvis“ — oder tippe hier.">
+    <button id="send" class="send">Senden</button>
+  </footer>
+
+</div>
+
+<div class="ask" id="ask" hidden>
+  <div class="ask-card">
+    <h3>Bestätigung erforderlich</h3>
+    <p class="ask-question" id="ask-question"></p>
+    <div class="ask-buttons">
+      <button id="ask-yes" class="yes">Ja</button>
+      <button id="ask-no" class="no">Nein</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

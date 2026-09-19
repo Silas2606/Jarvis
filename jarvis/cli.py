@@ -15,14 +15,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="jarvis",
         description="A voice-first personal assistant in the spirit of J.A.R.V.I.S.",
-        epilog="Run `jarvis` with no arguments to start listening.",
+        epilog="Run `jarvis` with no arguments to open the interface.",
     )
     parser.add_argument("--version", action="version", version=f"jarvis {__version__}")
     parser.add_argument("--config", type=Path, help="Path to a config.toml.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show reasoning and tool results.")
     parser.add_argument("--model", help="Override the Claude model.")
     parser.add_argument("--language", help="Spoken language, e.g. de or en.")
-    parser.add_argument("--text", action="store_true", help="Type instead of talk.")
+    parser.add_argument("--console", action="store_true", help="Run in the terminal instead of the window.")
+    parser.add_argument("--text", action="store_true", help="Type instead of talk, in the terminal.")
+    parser.add_argument("--no-window", action="store_true", help="Open the interface in a browser tab.")
     parser.add_argument("--no-greeting", action="store_true", help="Start without a greeting.")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"], help="How hard to think.")
 
@@ -345,15 +347,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "setup":
         return command_setup(config, args.what)
 
-    from jarvis.session import ask_once, build_session, run_text, run_voice
+    from jarvis.session import ask_once, build_session, run_text, run_ui, run_voice
 
     session = build_session(config, verbose=args.verbose)
     try:
         if args.command == "ask":
             return ask_once(session, " ".join(args.instruction))
-        if args.text or not config.voice.enabled:
+        if args.text:
             return run_text(session, greet=not args.no_greeting)
-        return run_voice(session, greet=not args.no_greeting)
+        if args.console:
+            if not config.voice.enabled:
+                return run_text(session, greet=not args.no_greeting)
+            return run_voice(session, greet=not args.no_greeting)
+        return run_ui(session, greet=not args.no_greeting)
     finally:
         session.close()
 

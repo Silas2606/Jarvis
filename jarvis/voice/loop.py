@@ -20,7 +20,7 @@ import threading
 import time
 
 from jarvis.brain import Brain, BrainError
-from jarvis.events import Event, EventBus, EventKind
+from jarvis.events import Event, EventBus, EventKind, State
 from jarvis.voice.audio import (
     Microphone,
     VoiceActivityDetector,
@@ -97,6 +97,7 @@ class VoiceLoop:
 
         self._stop = threading.Event()
         self._cancel = threading.Event()
+        self._level_thread: threading.Thread | None = None
         self._watcher: threading.Thread | None = None
         self._watching = threading.Event()
         self._interrupted = threading.Event()
@@ -109,6 +110,20 @@ class VoiceLoop:
         self.bus.emit(EventKind.ERROR, f"I could not say that out loud: {exc}")
 
     # -- event wiring --------------------------------------------------------
+
+    def _state(self, state: State) -> None:
+        self.bus.emit(EventKind.STATE, state.value)
+
+    def _publish_levels(self) -> None:
+        """Send the microphone level to any display, a few times a second.
+
+        Throttled deliberately: a frame every 30 ms would be 33 events per
+        second per listener, and the eye cannot use them.
+        """
+        while not self._stop.is_set():
+            self.bus.emit(EventKind.LEVEL, str(self.microphone.level))
+            if self._stop.wait(0.08):
+                return
 
     def _on_event(self, event: Event) -> None:
         """Anything meant to be heard goes into the speaking queue."""
@@ -162,6 +177,7 @@ class VoiceLoop:
         registry, which calls it before anything leaves the house.
         """
         self.bus.emit(EventKind.CONFIRM, question)
+        self._state(State.ASKING)
 
         # Let the queue finish so the question is not spoken over, and pause
         # the watcher so the answer is not mistaken for an interruption.
@@ -205,6 +221,7 @@ class VoiceLoop:
             return
 
         self.bus.emit(EventKind.HEARD, text)
+        self._state(State.THINKING)
         if self.brain.store is not None:
             self.brain.store.log_turn("user", text)
 
@@ -237,6 +254,7 @@ class VoiceLoop:
             self.bus.emit(EventKind.ANSWER, reply.text, tools=reply.tool_calls)
             if self.brain.store is not None:
                 self.brain.store.log_turn("assistant", reply.text)
+        self._state(State.ASLEEP)
 
         # Jarvis' own voice is still echoing in the buffer; drop it.
         self.microphone.drain()
@@ -250,6 +268,7 @@ class VoiceLoop:
             return None
         if not isinstance(detector, AlwaysAwakeDetector):
             self.bus.emit(EventKind.WAKE)
+        self._state(State.LISTENING)
 
         # The transcription detector already has the words.
         if wake.command:
@@ -283,6 +302,12 @@ class VoiceLoop:
         self.speech.start()
         if self.reminders is not None:
             self.reminders.start()
+
+        self._level_thread = threading.Thread(
+            target=self._publish_levels, name="jarvis-levels", daemon=True
+        )
+        self._level_thread.start()
+        self._state(State.ASLEEP)
 
         if greeting:
             self.speech.say(greeting)

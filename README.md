@@ -27,6 +27,35 @@ und die Stimme (Piper) laufen lokal auf deinem Rechner.
 
 ---
 
+## Die Oberfläche
+
+`jarvis` öffnet ein eigenes Fenster: der Kern in der Mitte reagiert auf das,
+was gerade passiert — ruhig im Wartezustand, grün und im Takt deiner Stimme
+beim Zuhören, bernsteinfarben beim Arbeiten. Links Systemzustand, Mikrofonpegel
+und ein Protokoll der Werkzeugaufrufe, rechts Aufgaben, Erinnerungen und
+Termine, unten das Gespräch und ein Eingabefeld für den Fall, dass Tippen
+gerade passender ist als Sprechen.
+
+**Jede Anzeige trägt echte Daten.** Es gibt hier keine dekorativen Balken.
+
+```bash
+jarvis                 # Fenster öffnen (Standard)
+jarvis --no-window     # dieselbe Oberfläche im Browser
+jarvis --console       # nur Terminal, wie bisher
+jarvis --text          # Tastatur statt Mikrofon
+```
+
+Für ein echtes Fenster statt eines Browser-Tabs:
+
+```bash
+pip install -e ".[window]"
+```
+
+Ohne dieses Paket öffnet sich die Oberfläche im Standardbrowser — sie
+funktioniert identisch. Der Server lauscht nur auf `127.0.0.1` und verlangt
+ein bei jedem Start neu erzeugtes Token; ohne das kommt keine andere Seite an
+dein Gespräch.
+
 ## Schnellstart
 
 ```bash
@@ -328,7 +357,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-122 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+136 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -347,7 +376,9 @@ jarvis/
   voice/             Mikrofon, VAD, Whisper, Wake-Word, TTS, der Loop
   voice/elevenlabs.py  ElevenLabs, als Stream direkt in die Soundkarte
   voice/fallback.py    weicht auf eine freie Stimme aus, wenn das Guthaben leer ist
-  ui/console.py      das HUD
+  ui/console.py      das HUD im Terminal
+  ui/server.py       lokaler Server: Ereignisstrom für die Oberfläche
+  ui/web/            die Oberfläche selbst (HTML, CSS, Canvas)
 ```
 
 ---

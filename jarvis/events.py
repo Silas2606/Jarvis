@@ -13,6 +13,8 @@ from typing import Any, Callable
 
 
 class EventKind(str, Enum):
+    STATE = "state"                  # idle / listening / thinking / speaking
+    LEVEL = "level"                  # microphone loudness, for the display
     LISTENING = "listening"          # microphone is open
     WAKE = "wake"                    # wake word detected
     HEARD = "heard"                  # an utterance was transcribed
@@ -26,6 +28,17 @@ class EventKind(str, Enum):
     REMINDER = "reminder"            # a reminder came due
     NOTICE = "notice"                # informational aside
     ERROR = "error"
+
+
+class State(str, Enum):
+    """What Jarvis is doing, as a display would put it."""
+
+    ASLEEP = "asleep"          # waiting for the wake word
+    LISTENING = "listening"    # recording an utterance
+    THINKING = "thinking"      # a request is in flight
+    WORKING = "working"        # running a tool
+    SPEAKING = "speaking"      # saying the answer
+    ASKING = "asking"          # waiting for a yes or no
 
 
 @dataclass

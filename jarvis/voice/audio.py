@@ -51,6 +51,9 @@ class Microphone:
         self._queue: queue.Queue = queue.Queue(maxsize=200)
         self._stream = None
         self._lock = threading.Lock()
+        # Loudness of the most recent frame, 0..1, smoothed. Read by the
+        # display; nothing in the listening path depends on it.
+        self._level = 0.0
 
     def __enter__(self) -> "Microphone":
         self.start()
@@ -115,9 +118,24 @@ class Microphone:
 
     def read(self, timeout: float = 1.0) -> bytes | None:
         try:
-            return self._queue.get(timeout=timeout)
+            frame = self._queue.get(timeout=timeout)
         except queue.Empty:
             return None
+        self._track(frame)
+        return frame
+
+    def _track(self, frame: bytes) -> None:
+        """Keep a smoothed loudness for the display."""
+        level = min(VoiceActivityDetector._rms(frame) / 9000.0, 1.0)
+        # Rise fast, fall slow: speech should light the display up at once and
+        # decay visibly rather than flickering off between syllables.
+        weight = 0.6 if level > self._level else 0.12
+        self._level += (level - self._level) * weight
+
+    @property
+    def level(self) -> float:
+        """How loud the room is right now, between 0 and 1."""
+        return round(self._level, 3)
 
 
 class VoiceActivityDetector:
