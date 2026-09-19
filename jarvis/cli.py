@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("voices", help="List the voices the speech engine accepts.")
 
     setup = subcommands.add_parser("setup", help="One-off setup steps.")
-    setup.add_argument("what", choices=["google", "config"], help="What to set up.")
+    setup.add_argument(
+        "what", choices=["google", "microsoft", "config"], help="What to set up."
+    )
 
     return parser
 
@@ -194,6 +196,20 @@ def command_doctor(config: Config) -> int:
         "jarvis setup google",
     )
 
+    if config.tools.tasks_backend == "microsoft" or config.tools.microsoft_client_id:
+        from jarvis.tools.microsoft_auth import is_configured as ms_configured
+
+        ready = ms_configured(config)
+        where = "To Do" if config.tools.tasks_backend == "microsoft" else "not used for tasks"
+        check(
+            "Microsoft",
+            ready,
+            f"authorised — {where}" if ready else "not authorised",
+            "jarvis setup microsoft",
+        )
+    else:
+        lines.append(f"  · {'tasks':<26} local list (set tasks_backend = \"microsoft\" for To Do)")
+
     print("\n".join(lines))
     if problems:
         print("\n  To fix:")
@@ -308,6 +324,23 @@ def command_setup(config: Config, what: str) -> int:
             return 0
         path.write_text(EXAMPLE_CONFIG, encoding="utf-8")
         print(f"  Wrote {path}")
+        return 0
+
+    if what == "microsoft":
+        from jarvis.tools.microsoft_auth import MicrosoftUnavailable, get_token
+
+        config.ensure_home()
+        try:
+            get_token(config, interactive=True, prompt=lambda message: print(f"\n  {message}\n"))
+        except MicrosoftUnavailable as exc:
+            print(f"  ✗ {exc}")
+            return 2
+        except Exception as exc:
+            print(f"  ✗ Sign-in failed: {exc}")
+            return 2
+        print(f"  ✓ Microsoft authorised. Token saved to {config.microsoft_token_path}")
+        if config.tools.tasks_backend != "microsoft":
+            print('  To use To Do for tasks, set tasks_backend = "microsoft" under [tools].')
         return 0
 
     from jarvis.tools.google_auth import GoogleUnavailable, load_credentials, reset_services

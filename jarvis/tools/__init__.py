@@ -40,6 +40,7 @@ def build_registry(config, store, bus=None, confirm=None) -> ToolRegistry:
         bus: Event bus, for tools that want to announce themselves.
         confirm: Callable asking the user a yes/no question out loud.
     """
+    from jarvis.tools.browser_tools import BROWSER_TOOLS
     from jarvis.tools.calendar_tools import CALENDAR_TOOLS
     from jarvis.tools.mail_tools import MAIL_TOOLS
     from jarvis.tools.memory_tools import (
@@ -55,13 +56,24 @@ def build_registry(config, store, bus=None, confirm=None) -> ToolRegistry:
 
     registry.register(*TIME_TOOLS)
     if config.tools.memory:
-        registry.register(*NOTE_TOOLS, *TASK_TOOLS, *FACT_TOOLS)
+        registry.register(*NOTE_TOOLS, *FACT_TOOLS)
+        # Tasks come from one backend or the other, never both: two sets of
+        # tools with the same names would be ambiguous, and two lists that
+        # disagree are worse than one that is merely elsewhere.
+        if config.tools.tasks_backend == "microsoft":
+            from jarvis.tools.microsoft_tools import MICROSOFT_TASK_TOOLS
+
+            registry.register(*MICROSOFT_TASK_TOOLS)
+        else:
+            registry.register(*TASK_TOOLS)
     if config.tools.reminders:
         registry.register(*REMINDER_TOOLS)
     if config.tools.calendar:
         registry.register(*CALENDAR_TOOLS)
     if config.tools.mail:
         registry.register(*MAIL_TOOLS)
+    if getattr(config.tools, "browser", True):
+        registry.register(*BROWSER_TOOLS)
 
     if config.brain.web_access:
         registry.register_server_tool(WEB_SEARCH_TOOL)

@@ -113,6 +113,13 @@ class ToolsConfig:
     confirm_outbound: bool = True
     google_credentials: str = ""  # defaults to <home>/google_client_secret.json
     google_token: str = ""  # defaults to <home>/google_token.json
+    # Where tasks live: "local" is the built-in SQLite list, "microsoft" is
+    # Microsoft To Do. The tools carry the same names either way.
+    tasks_backend: str = "local"
+    microsoft_client_id: str = ""
+    microsoft_token: str = ""  # defaults to <home>/microsoft_token.json
+    # Opening pages in the browser and reading them.
+    browser: bool = True
 
 
 @dataclass
@@ -138,6 +145,10 @@ class Config:
     @property
     def config_path(self) -> Path:
         return self.home / "config.toml"
+
+    @property
+    def microsoft_token_path(self) -> Path:
+        return Path(self.tools.microsoft_token or self.home / "microsoft_token.json")
 
     @property
     def tts_state_path(self) -> Path:

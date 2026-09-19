@@ -181,7 +181,37 @@ Ausprobieren gut, für den Alltag zu wenig. Genau dafür gibt es den Rückfall.
 > durchgehende Sprache, bevor er sich unterbrechen lässt — aber mit Kopfhörern
 > reagiert er zuverlässiger.
 
-### 3. Kalender und Mail
+### 3. Microsoft To Do
+
+```bash
+pip install -e ".[microsoft]"
+```
+
+Im [Entra-Portal](https://entra.microsoft.com) unter *Identity → App
+registrations → New registration* eine App anlegen (Name beliebig, Kontotyp:
+persönliche Microsoft-Konten). In der App unter *Authentication* →
+**Allow public client flows: Ja**. Dann die *Application (client) ID* eintragen:
+
+```toml
+[tools]
+microsoft_client_id = "…"
+tasks_backend = "microsoft"
+```
+
+Und einmalig anmelden:
+
+```bash
+jarvis setup microsoft
+```
+
+Er zeigt einen kurzen Code, den du auf
+[microsoft.com/devicelogin](https://microsoft.com/devicelogin) eingibst — auch
+vom Handy aus. Danach landet „setz das auf die Liste" in To Do statt in der
+lokalen Liste; die Werkzeuge heißen gleich, Jarvis merkt den Unterschied
+nicht. Angefragt wird nur `Tasks.ReadWrite` — Mail und Dateien bleiben außen
+vor.
+
+### 4. Kalender und Mail
 
 ```bash
 pip install -e ".[google]"
@@ -232,6 +262,7 @@ dir zu.
 | `jarvis listen` | Nimmt einmal auf und zeigt das Transkript |
 | `jarvis voices` | Listet die Stimmen, die deine Engine akzeptiert |
 | `jarvis setup google` | Autorisiert Kalender und Mail |
+| `jarvis setup microsoft` | Autorisiert Microsoft To Do |
 | `jarvis setup config` | Schreibt eine Beispiel-Konfiguration |
 
 Nützliche Schalter: `--verbose` (zeigt Denkprozess und Tool-Ergebnisse),
@@ -288,6 +319,13 @@ Antworten im Thread.
 
 **Recherche** — Websuche und Seitenabruf laufen über Anthropics serverseitige
 Tools. Kein zweiter API-Schlüssel nötig.
+
+**Browser** — „Mach YouTube auf", „such mir das", oder eine Seite abrufen und
+zusammenfassen lassen. Abgerufen werden nur öffentliche Adressen: Anfragen an
+`localhost`, private Netze und Cloud-Metadaten werden abgelehnt, und zwar
+anhand der aufgelösten IP, nicht des Namens. Das ist kein Schutz vor dir,
+sondern vor Texten, die Jarvis liest — eine Mail kann ihn sonst auffordern,
+Dienste in deinem Netz abzufragen.
 
 **Zeit** — die Rechnung, bei der Sprachmodelle am häufigsten danebenliegen,
 macht ein getesteter Parser: „in zehn Minuten", „übermorgen halb drei",
@@ -357,7 +395,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-136 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
+166 Tests, ohne API-Schlüssel und ohne Mikrofon lauffähig: ein skriptbarer
 Fake-Client (`tests/conftest.py`) spielt Claude, sodass Tool-Runden,
 Abbrüche, Ablehnungen, Fehlerpfade und der Gesprächsverlauf echt geprüft
 werden.
@@ -373,6 +411,8 @@ jarvis/
   scheduler.py       Erinnerungs-Thread
   session.py         setzt alles zusammen
   tools/             die Werkzeuge, als Schemas aus Signatur + Docstring
+  tools/browser_tools.py    Seiten öffnen und lesen
+  tools/microsoft_tools.py  Microsoft To Do, unter denselben Namen
   voice/             Mikrofon, VAD, Whisper, Wake-Word, TTS, der Loop
   voice/elevenlabs.py  ElevenLabs, als Stream direkt in die Soundkarte
   voice/fallback.py    weicht auf eine freie Stimme aus, wenn das Guthaben leer ist
